@@ -36,10 +36,10 @@ if (__hasShelfButtonByLabel($SHELF, $LABEL)) {
     __removeShelfButtonByLabel($SHELF, $LABEL);
 }
 
-// 追加（*Python から cv_scaler.main() を呼ぶ*）
+// 追加（main.py を呼ぶ）
 shelfButton
     -parent $SHELF
     -image1 "cv_scaler.png"
     -label $LABEL
-    -annotation "Scale CVs of selected NURBS (UI)"
-    -command "python(\"from my_shelf import cv_scaler; cv_scaler.main()\")";
+    -annotation "CV_Scaler UI"
+    -command "python(\"import main; main.main()\")";
