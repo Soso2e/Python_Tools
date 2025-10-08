@@ -70,11 +70,20 @@ def main(pkg_root: str | None = None):
     if os.path.isdir(icons_src):
         _copytree(icons_src, icons_dst)
 
-    # 4) 反映
+    # 4) 反映（フルパス指定で source）
     try:
-        mel.eval('source "add_to_shelf.mel";')
+        mel_path = os.path.join(shelves_dst, "add_to_shelf.mel")
+        if os.path.exists(mel_path):
+            mel_path_mel = mel_path.replace('\\', '/')  # MELはスラッシュを推奨
+            try:
+                mel.eval('rehash;')  # パスの再スキャン（保険）
+            except Exception:
+                pass
+            mel.eval('source "{}";'.format(mel_path_mel))
+        else:
+            cmds.warning("[CV_Scaler] add_to_shelf.mel not found at: {}".format(mel_path))
     except Exception as e:
-        cmds.warning(f"[CV_Scaler] add_to_shelf.mel の反映に失敗: {e}")
+        cmds.warning(f"[CV_Scaler] shelf refresh failed: {e}")
 
     _log(u"<hl>CV_Scaler</hl>: インストール完了！シェルフのボタンから起動できます。")
     cmds.confirmDialog(title="CV_Scaler", message="インストール完了！\nShelfにボタンが追加されました。", button=["OK"])
