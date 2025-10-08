@@ -56,10 +56,14 @@ for %%V in (%VERSIONS%) do (
   )
 )
 
+echo.
+echo --- Detecting newest Maya and launching ---
+
 REM ====== 3) 最も新しいMayaバージョンを検出して起動 ======
 set "NEWEST_VER="
+set "MAYA_EXE="
 
-REM 3-a) ユーザprefs配下にあるフォルダ名(20xx)から最大値を決定
+REM 3-a) ユーザprefs配下(20xx)から最大値を決定
 for /f "delims=" %%D in ('dir /ad /b "%MAYA_ROOT%" ^| findstr /r "^20[0-9][0-9]$"') do (
   call :_cmp_set_newest "%%D"
 )
@@ -72,17 +76,33 @@ for /f "delims=" %%D in ('dir /ad /b "%ProgramFiles%\Autodesk" ^| findstr /r "^M
 )
 
 if defined NEWEST_VER (
-  echo Detected newest Maya version: %NEWEST_VER%
   set "MAYA_EXE=%ProgramFiles%\Autodesk\Maya%NEWEST_VER%\bin\maya.exe"
-  if exist "%MAYA_EXE%" (
-    echo Launching Maya %NEWEST_VER%...
-    start "" "%MAYA_EXE%"
-  ) else (
-    echo maya.exe not found at: %MAYA_EXE%
-  )
-) else (
-  echo Could not detect installed Maya version.
 )
+
+REM 3-c) もし上の推定で見つからない場合は Program Files を総当たりで探索
+if not exist "%MAYA_EXE%" (
+  for /f "delims=" %%F in ('dir /b /s "%ProgramFiles%\Autodesk\Maya20??\bin\maya.exe" 2^>nul') do (
+    set "MAYA_EXE=%%F"
+  )
+)
+
+REM 3-d) PATHに登録されていれば where で拾う
+if not exist "%MAYA_EXE%" (
+  for /f "delims=" %%F in ('where maya.exe 2^>nul') do (
+    set "MAYA_EXE=%%F"
+    goto :_found_exe
+  )
+)
+
+:_found_exe
+if defined MAYA_EXE (
+  echo Launching: "%MAYA_EXE%"
+  start "" "%MAYA_EXE%"
+) else (
+  echo [WARN] maya.exe を検出できませんでした。手動で起動してください。
+)
+
+goto :after_detect
 
 :_cmp_set_newest
 set "CAND=%~1"
@@ -93,6 +113,8 @@ if not defined NEWEST_VER (
   if %CAND% GTR %NEWEST_VER% set "NEWEST_VER=%CAND%"
 )
 exit /b 0
+
+:after_detect
 
 echo.
 echo ✅ インストール完了。次回の通常起動で「Python」棚に「CV_Scaler」ボタンが出ます。
