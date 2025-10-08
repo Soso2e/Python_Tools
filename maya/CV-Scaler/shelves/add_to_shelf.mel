@@ -1,0 +1,45 @@
+global string $gShelfTopLevel;
+
+// タブ存在チェック → 無ければ作成
+if (!`shelfLayout -exists "Python"`) {
+    setParent $gShelfTopLevel;
+    shelfLayout -cellWidth 34 -cellHeight 34 "Python";
+}
+
+// 重複ボタン検出
+global proc int __hasShelfButtonByLabel(string $shelfName, string $label){
+    string $kids[] = `shelfLayout -q -ca $shelfName`;
+    if (size($kids) == 0) return 0;
+    for ($i=0; i<size($kids); ++i){
+        if (`shelfButton -q -dl $kids[$i]` == $label) return 1;
+    }
+    return 0;
+}
+
+// 指定ラベルのボタンを削除（上書き用）
+global proc __removeShelfButtonByLabel(string $shelfName, string $label){
+    string $kids[] = `shelfLayout -q -ca $shelfName`;
+    for ($i=0; i<size($kids); ++i){
+        if (`shelfButton -q -dl $kids[$i]` == $label) {
+            deleteUI -control $kids[$i];
+            break;
+        }
+    }
+}
+
+// 上書き対象ラベル
+string $SHELF = "Python";
+string $LABEL = "CV_Scaler";
+
+// 既存なら消して上書き
+if (__hasShelfButtonByLabel($SHELF, $LABEL)) {
+    __removeShelfButtonByLabel($SHELF, $LABEL);
+}
+
+// 追加（*Python から cv_scaler.main() を呼ぶ*）
+shelfButton
+    -parent $SHELF
+    -image1 "cv_scaler.png"
+    -label $LABEL
+    -annotation "Scale CVs of selected NURBS (UI)"
+    -command "python(\"from my_shelf import cv_scaler; cv_scaler.main()\")";
