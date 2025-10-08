@@ -25,20 +25,32 @@ def _copytree(src, dst):
             d = os.path.join(out_dir, f)
             shutil.copy2(s, d)
 
-def main():
-    # 1) パッケージルート推定（このファイルの場所）
+def onMayaDroppedPythonFile(filePath):
+    """Maya viewport Drag & Drop entry point.
+    Maya calls this when a .py is dropped onto the viewport.
+    """
     try:
+        # Prefer the dropped file's directory as the package root
+        pkg_root = os.path.dirname(filePath) if filePath else None
+        main(pkg_root)
+    except Exception as e:
+        try:
+            cmds.warning("[CV_Scaler] D&D install failed: {}".format(e))
+        except Exception:
+            pass
+
+def main(pkg_root: str | None = None):
+    # 1) パッケージルート推定（このファイルの場所 or ドロップ元）
+    if not pkg_root:
         pkg_root = os.path.dirname(__file__)
-    except NameError:
-        # ScriptEditorに貼って実行されたケースは__file__がないので手動選択
-        pkg_root = cmds.fileDialog2(dialogStyle=2, fileMode=3, caption="Select CV_Scaler package root")[0]
+
+    # 2) ソースとコピー先の設定
     shelves_src = os.path.join(pkg_root, "shelves")
     scripts_src = os.path.join(pkg_root, "scripts")
-    icons_src   = os.path.join(pkg_root, "icon")  # singular
+    icons_src   = os.path.join(pkg_root, "icon")
 
-    # 2) Mayaユーザフォルダ/バージョン
-    user_root = cmds.internalVar(userAppDir=True)  # .../Documents/maya/
-    ver = cmds.about(v=True)                       # "2025" など
+    user_root = cmds.internalVar(userAppDir=True)
+    ver = cmds.about(v=True)
     prefs = os.path.join(user_root, ver, "prefs")
     shelves_dst = os.path.join(prefs, "shelves")
     icons_dst   = os.path.join(prefs, "icons")
@@ -47,23 +59,18 @@ def main():
     for d in (shelves_dst, icons_dst, scripts_dst):
         _ensure_dir(d)
 
-    # 3) 配置（上書き）
+    # 3) ファイルのコピー
     mel_src = os.path.join(shelves_src, "add_to_shelf.mel")
     if os.path.exists(mel_src):
         shutil.copy2(mel_src, os.path.join(shelves_dst, "add_to_shelf.mel"))
-    else:
-        cmds.warning("[CV_Scaler] shelves/add_to_shelf.mel が見つかりません。")
 
     if os.path.isdir(scripts_src):
         _copytree(scripts_src, scripts_dst)
-    else:
-        cmds.warning("[CV_Scaler] scripts フォルダが見つかりません。")
 
     if os.path.isdir(icons_src):
-        _copytree(icons_src, icons_dst)  # *.png をまとめて
-    # icons は任意。無ければスキップ
+        _copytree(icons_src, icons_dst)
 
-    # 4) その場で棚を反映（次回起動を待たずにボタンを出す）
+    # 4) 反映
     try:
         mel.eval('source "add_to_shelf.mel";')
     except Exception as e:
@@ -73,4 +80,4 @@ def main():
     cmds.confirmDialog(title="CV_Scaler", message="インストール完了！\nShelfにボタンが追加されました。", button=["OK"])
 
 if __name__ == "__main__":
-    main()
+    main(None)
