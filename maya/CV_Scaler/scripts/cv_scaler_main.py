@@ -123,8 +123,8 @@ def _build_ui() -> None:
 
     cmds.separator(h=6, style="none")
     cmds.text(
-        l=u"選択中の Transform 配下の NURBS（curve/surface）のCVを、回転ピボット基準で相対スケールします。\n"
-          u"Apply を連打すると毎回スライダー値（例：1.2）が掛かり、累積的に拡大／縮小します。",
+        l=u"選択中の NURBSのみ を一括で、CVスケールします。\n"
+          u"例）2.0の状態で連打すると、どんどん2倍になります。",
         al="left"
     )
 
