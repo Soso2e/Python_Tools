@@ -11,7 +11,7 @@ global proc int __hasShelfButtonByLabel(string $shelfName, string $label){
     string $kids[] = `shelfLayout -q -ca $shelfName`;
     if (size($kids) == 0) return 0;
     for ($i=0; $i<size($kids); ++$i){
-        if (`shelfButton -q -dl $kids[$i]` == $label) return 1;
+        if (`shelfButton -q -l $kids[$i]` == $label) return 1;
     }
     return 0;
 }
@@ -20,7 +20,7 @@ global proc int __hasShelfButtonByLabel(string $shelfName, string $label){
 global proc __removeShelfButtonByLabel(string $shelfName, string $label){
     string $kids[] = `shelfLayout -q -ca $shelfName`;
     for ($i=0; $i<size($kids); ++$i){
-        if (`shelfButton -q -dl $kids[$i]` == $label) {
+        if (`shelfButton -q -l $kids[$i]` == $label) {
             deleteUI -control $kids[$i];
             break;
         }
@@ -36,10 +36,10 @@ if (__hasShelfButtonByLabel($SHELF, $LABEL)) {
     __removeShelfButtonByLabel($SHELF, $LABEL);
 }
 
-// 追加（main.py を呼ぶ）
+// 追加（cv_scaler_main.py を呼ぶ）
 shelfButton
     -parent $SHELF
     -image1 "cv_scaler.png"
     -label $LABEL
     -annotation "CV_Scaler UI"
-    -command "python(\"import main; main.main()\")";
+    -command "python(\"import importlib; importlib.invalidate_caches(); from CV_Scaler.scripts import cv_scaler_main as app; importlib.reload(app); app.main()\")";
