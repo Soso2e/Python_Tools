@@ -100,12 +100,12 @@ def _build_ui() -> None:
     win = cmds.window(WINDOW_NAME, title=WINDOW_TITLE, sizeable=False)
     cmds.columnLayout(adj=True, rs=8, co=("both", 10))
 
-    # スライダー（0.1～3.0, default=1.2 くらいが使いやすいかも）
+    # スライダー（0.1～3.0, default=1.0 くらいが使いやすいかも）
     slider = cmds.floatSliderGrp(
         "cvScaler_factor",
         label="Scale factor",
         field=True,
-        min=0.1, max=3.0, value=1.2,
+        min=0.1, max=3.0, value=1.0,
         precision=3,
     )
 
