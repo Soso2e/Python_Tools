@@ -100,7 +100,7 @@ def _build_ui() -> None:
     win = cmds.window(WINDOW_NAME, title=WINDOW_TITLE, sizeable=False)
     cmds.columnLayout(adj=True, rs=8, co=("both", 10))
 
-    # スライダー（0.1～3.0, default=1.0 くらいが使いやすいかも）
+    # スライダー（0.1～3.0, default=1.0）
     slider = cmds.floatSliderGrp(
         "cvScaler_factor",
         label="Scale factor",
@@ -124,7 +124,7 @@ def _build_ui() -> None:
     cmds.separator(h=6, style="none")
     cmds.text(
         l=u"選択中の NURBSのみ を一括で、CVスケールします。\n"
-          u"例）2.0の状態で連打すると、どんどん2倍になります。",
+          u"例）2.0の状態で連打すると、押すたびに2倍になります。",
         al="left"
     )
 
