@@ -38,6 +38,7 @@ def _touch(path: str, content: str = ""):
         with open(path, "w", encoding="utf-8") as fw:
             fw.write(content)
 
+
 def _append_env_path(var_name: str, new_path: str):
     # Maya は ; 区切り（Windows）/ : 区切り（mac/Linux）どちらも可
     sep = ";" if os.name == "nt" else ":"
@@ -45,6 +46,51 @@ def _append_env_path(var_name: str, new_path: str):
     paths = [p for p in cur.split(sep) if p]
     if new_path not in paths:
         os.environ[var_name] = (cur + (sep if cur else "") + new_path)
+
+
+# --- Ensure userSetup.py bootstrapping for import path and XBMLANGPATH
+def _ensure_user_setup(scripts_dir: str, icon_dir: str):
+    """userSetup.py に起動時ブートストラップを一度だけ追記して、
+    再起動後も import パスと XBMLANGPATH を確実に通す。
+
+    既に同じブロックが存在する場合は何もしない。
+    """
+    us_path = os.path.join(scripts_dir, "userSetup.py")
+    marker_begin = "# --- BEGIN CV_Scaler bootstrap ---"
+    marker_end = "# --- END CV_Scaler bootstrap ---"
+
+    block = (
+        f"{marker_begin}\n"
+        "import os, sys\n"
+        f"_scripts = r\"{scripts_dir}\"\n"
+        f"_icon = r\"{icon_dir}\"\n"
+        "if _scripts and _scripts not in sys.path:\n"
+        "    sys.path.append(_scripts)\n"
+        "sep = ';' if os.name == 'nt' else ':'\n"
+        "cur = os.environ.get('XBMLANGPATH', '')\n"
+        "paths = [p for p in cur.split(sep) if p]\n"
+        "if _icon and os.path.isdir(_icon) and _icon not in paths:\n"
+        "    os.environ['XBMLANGPATH'] = (cur + (sep if cur else '') + _icon)\n"
+        f"{marker_end}\n"
+    )
+
+    # 既存チェック
+    if os.path.exists(us_path):
+        try:
+            with open(us_path, "r", encoding="utf-8") as fr:
+                txt = fr.read()
+            if marker_begin in txt and marker_end in txt:
+                return  # すでに追記済み
+        except Exception:
+            pass
+
+    # 追記
+    _touch(us_path)
+    try:
+        with open(us_path, "a", encoding="utf-8") as fa:
+            fa.write("\n\n" + block)
+    except Exception:
+        pass
 
 def _ensure_shelf_button(shelf_name: str, label: str, icon_path: str, py_cmd: str):
     """指定の棚に、指定ラベルのボタンを“上書き作成”する。
@@ -138,6 +184,9 @@ def main(dropped_root: str):
         # アイコン探索パスに追加（現在セッション有効）
         _append_env_path("XBMLANGPATH", dst_pkg_icon)
 
+    # --- Ensure bootstrapping at next startup (import path & icon path)
+    _ensure_user_setup(scripts_dir, dst_pkg_icon)
+
     # --- Python パス（保険で追加）
     if scripts_dir not in sys.path:
         sys.path.append(scripts_dir)
@@ -157,8 +206,10 @@ def main(dropped_root: str):
     BUTTON_LABEL = "CV_Scaler"       # ボタンの識別にも使用
     ICON_PATH = os.path.join(dst_pkg_icon, "cv_scaler.png")
     PY_CMD = (
-        "from CV_Scaler.scripts import cv_scaler_main; "
-        "cv_scaler_main.main()"
+        "import importlib; "
+        "m = importlib.import_module('CV_Scaler.scripts.cv_scaler_main'); "
+        "importlib.reload(m); "
+        "m.main()"
     )
     try:
         _ensure_shelf_button(SHELF_NAME, BUTTON_LABEL, ICON_PATH, PY_CMD)

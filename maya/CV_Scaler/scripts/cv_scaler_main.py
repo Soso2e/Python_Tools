@@ -63,6 +63,7 @@ def _scale_cvs_uniform(components: List[str], factor: float, pivot: Tuple[float,
 
 def _do_scale(factor: float) -> None:
     """実行本体：選択から抽出 → 形状ごとにCVをスケール。"""
+    cmds.select(hierarchy=True)
     pairs = _selected_nurbs_shapes()
     if not pairs:
         cmds.warning(u"[CV_Scaler] NURBSが選択されていません（Transformを選んでください）。")
