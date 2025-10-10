@@ -5,7 +5,7 @@
 # - Copy opt: <dropped>/icon     -> .../CV_Scaler/icon   (あれば)
 # - Path:     sys.path に scripts を追加（必要なら）
 # - IconPath: XBMLANGPATH に .../CV_Scaler/icon を追加（あれば）
-# - Shelves:  変更しない（存在すれば rehash + source のみ）
+# - Shelves:  PythonタブにCV_Scalerボタンを作成（無ければタブ新規／あれば同名ボタンを上書き）
 
 from __future__ import annotations
 import os, sys, shutil
@@ -45,6 +45,51 @@ def _append_env_path(var_name: str, new_path: str):
     paths = [p for p in cur.split(sep) if p]
     if new_path not in paths:
         os.environ[var_name] = (cur + (sep if cur else "") + new_path)
+
+def _ensure_shelf_button(shelf_name: str, label: str, icon_path: str, py_cmd: str):
+    """指定の棚に、指定ラベルのボタンを“上書き作成”する。
+
+    - 棚(shelf)が無ければ新規作成。
+    - 既存の同名ボタンは削除してから再作成。
+    - `icon_path` が無ければ Maya 既定アイコンを使用。
+    """
+    from maya import cmds, mel
+
+    # rehash は呼び出し側でも実施するが、念のため
+    try:
+        mel.eval("rehash;")
+    except Exception:
+        pass
+
+    # 1) 棚レイアウトの存在確認→無ければ作る
+    if not cmds.shelfLayout(shelf_name, exists=True):
+        # gShelfTopLevel にぶら下げて作成
+        mel.eval('global string $gShelfTopLevel;')
+        g_top = mel.eval('$tmp = $gShelfTopLevel;')
+        cmds.setParent(g_top)
+        cmds.shelfLayout(shelf_name, cellWidth=34, cellHeight=34)
+
+    # 2) 同名ラベルのボタンを削除（上書き動作）
+    kids = cmds.shelfLayout(shelf_name, q=True, ca=True) or []
+    for k in kids:
+        try:
+            if cmds.shelfButton(k, q=True, l=True) == label:
+                cmds.deleteUI(k)
+        except Exception:
+            pass
+
+    # 3) アイコンの最終決定
+    final_icon = icon_path if (icon_path and os.path.isfile(icon_path)) else "commandButton.png"
+
+    # 4) 新規作成
+    cmds.shelfButton(
+        parent=shelf_name,
+        l=label,
+        i=final_icon.replace('\\\\', '/').replace('\\\\', '/'),
+        stp="python",
+        c=py_cmd,
+        ann=label
+    )
 
 def onMayaDroppedPythonFile(filePath):
     try:
@@ -97,20 +142,33 @@ def main(dropped_root: str):
     if scripts_dir not in sys.path:
         sys.path.append(scripts_dir)
 
-    # --- Shelves は変更しない（存在すれば rehash + source のみ）
-    #     例: add_to_shelf.mel に既に正しいコマンドが入っている前提
+    # --- Shelves: Pythonタブに CV_Scaler ボタンを作成（新規 or 上書き）
+    # 1) rehash と、同梱のMELがあれば source（互換のため）
     mel_path = os.path.join(shelves_dir, "add_to_shelf.mel")
     try:
         mel.eval("rehash;")
         if os.path.exists(mel_path):
             mel.eval('source "{}";'.format(mel_path.replace("\\", "/")))
     except Exception as e:
-        cmds.warning(f"[CV_Scaler] shelf refresh failed: {e}")
+        cmds.warning(f"[CV_Scaler] shelf refresh (source) failed: {e}")
+
+    # 2) Python棚に CV_Scaler ボタンを“上書き作成”
+    SHELF_NAME = "Python"            # 無ければ新規作成
+    BUTTON_LABEL = "CV_Scaler"       # ボタンの識別にも使用
+    ICON_PATH = os.path.join(dst_pkg_icon, "cv_scaler.png")
+    PY_CMD = (
+        "from CV_Scaler.scripts import cv_scaler_main; "
+        "cv_scaler_main.run()"
+    )
+    try:
+        _ensure_shelf_button(SHELF_NAME, BUTTON_LABEL, ICON_PATH, PY_CMD)
+    except Exception as e:
+        cmds.warning(f"[CV_Scaler] create/overwrite shelf button failed: {e}")
 
     _log(u"<hl>CV_Scaler</hl>: インストール完了！\n"
          u"・scripts/CV_Scaler にコピー\n"
          u"・icon があればパス追加（XBMLANGPATH）\n"
-         u"・Shelves は未変更（再読込のみ）")
+         u"・Python棚にCV_Scalerボタンを作成（無ければ棚新規／あれば上書き）")
 
     try:
         cmds.confirmDialog(
@@ -120,7 +178,7 @@ def main(dropped_root: str):
                 "• コピー先:\n"
                 f"{dst_pkg_root}\n"
                 "• アイコン: ある場合は XBMLANGPATH に追加済み\n"
-                "• Shelves: 変更なし（再読込のみ）"
+                "• Shelves: Python棚にCV_Scalerボタンを作成（無ければ棚新規／あれば上書き）"
             ),
             button=["OK"]
         )
