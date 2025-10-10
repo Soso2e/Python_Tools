@@ -158,7 +158,7 @@ def main(dropped_root: str):
     ICON_PATH = os.path.join(dst_pkg_icon, "cv_scaler.png")
     PY_CMD = (
         "from CV_Scaler.scripts import cv_scaler_main; "
-        "cv_scaler_main.run()"
+        "cv_scaler_main.main()"
     )
     try:
         _ensure_shelf_button(SHELF_NAME, BUTTON_LABEL, ICON_PATH, PY_CMD)
