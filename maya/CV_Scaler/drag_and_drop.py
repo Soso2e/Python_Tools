@@ -49,20 +49,20 @@ def _append_env_path(var_name: str, new_path: str):
 
 
 # --- Ensure userSetup.py bootstrapping for import path and XBMLANGPATH
-def _ensure_user_setup(scripts_dir: str, icon_dir: str):
+def _ensure_user_setup(boot_dir: str, target_scripts: str, icon_dir: str):
     """userSetup.py に起動時ブートストラップを一度だけ追記して、
     再起動後も import パスと XBMLANGPATH を確実に通す。
 
     既に同じブロックが存在する場合は何もしない。
     """
-    us_path = os.path.join(scripts_dir, "userSetup.py")
+    us_path = os.path.join(boot_dir, "userSetup.py")
     marker_begin = "# --- BEGIN CV_Scaler bootstrap ---"
     marker_end = "# --- END CV_Scaler bootstrap ---"
 
     block = (
         f"{marker_begin}\n"
         "import os, sys\n"
-        f"_scripts = r\"{scripts_dir}\"\n"
+        f"_scripts = r\"{target_scripts}\"\n"
         f"_icon = r\"{icon_dir}\"\n"
         "if _scripts and _scripts not in sys.path:\n"
         "    sys.path.append(_scripts)\n"
@@ -155,6 +155,9 @@ def main(dropped_root: str):
     shelves_dir = os.path.join(prefs_dir, "shelves")
     scripts_dir = os.path.join(user_root, ver, "scripts")
 
+    # Maya 共通ユーザースクリプトディレクトリ（userSetup.py の実行場所）
+    user_script_dir = cmds.internalVar(userScriptDir=True)
+
     for d in (shelves_dir, scripts_dir):
         _ensure_dir(d)
 
@@ -184,8 +187,10 @@ def main(dropped_root: str):
         # アイコン探索パスに追加（現在セッション有効）
         _append_env_path("XBMLANGPATH", dst_pkg_icon)
 
+    # NOTE: userSetup.py は <Documents>/maya/scripts/ に置かれる。起動時に必ず実行されるため、
+    # ここでバージョン付き scripts を sys.path へ追加し、CV_Scaler を安定インポート可能にする。
     # --- Ensure bootstrapping at next startup (import path & icon path)
-    _ensure_user_setup(scripts_dir, dst_pkg_icon)
+    _ensure_user_setup(user_script_dir, scripts_dir, dst_pkg_icon)
 
     # --- Python パス（保険で追加）
     if scripts_dir not in sys.path:
