@@ -53,6 +53,42 @@ for %%V in (%VERSIONS%) do (
     ) else (
       echo [INFO] icon folder not found. Skipping icons.
     )
+
+    REM --- userSetup.py（ブートストラップを一度だけ追記） ---
+    set "USER_SCRIPTS=%MAYA_ROOT%\%%V\scripts"
+    set "USER_SETUP=%USER_SCRIPTS%\userSetup.py"
+    set "BOOTMARK=# --- BEGIN CV_Scaler bootstrap ---"
+
+    rem 既に同ブロックがあれば追記しない
+    if exist "%USER_SETUP%" (
+      findstr /C:"%BOOTMARK%" "%USER_SETUP%" >nul 2>&1 && goto :_skip_bootstrap_%%V
+    )
+
+    rem ファイルを作成（無ければ）
+    if not exist "%USER_SCRIPTS%" mkdir "%USER_SCRIPTS%" >nul 2>&1
+    if not exist "%USER_SETUP%" type nul > "%USER_SETUP%"
+
+    (
+      echo # --- BEGIN CV_Scaler bootstrap ---
+      echo import os, sys
+      echo _scripts = r"%MAYA_ROOT%\%%V\scripts"
+      echo _icon = r"%DEST_PREFS%\icons"
+      echo if _scripts and _scripts not in sys.path:^    sys.path.append(_scripts)
+      echo sep = ';' if os.name == 'nt' else ':'
+      echo cur = os.environ.get('XBMLANGPATH','')
+      echo paths = [p for p in cur.split(sep) if p]
+      echo if _icon and os.path.isdir(_icon) and _icon not in paths:^    os.environ['XBMLANGPATH'] = (cur + (sep if cur else '') + _icon)
+      echo # 自動でシェルフセットアップ（起動時に一度実行される想定）
+      echo try:
+      echo ^    import maya.cmds as cmds, maya.mel as mel
+      echo ^    prefs = cmds.internalVar(userPrefDir=True)
+      echo ^    mel.eval('source "'^'^+prefs.replace("\\","/")+'^'/shelves/add_to_shelf.mel'^'')
+      echo except Exception as _e:
+      echo ^    pass
+      echo # --- END CV_Scaler bootstrap ---
+    )>>"%USER_SETUP%"
+
+:_skip_bootstrap_%%V
   )
 )
 
