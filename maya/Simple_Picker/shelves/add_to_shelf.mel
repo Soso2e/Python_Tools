@@ -1,0 +1,49 @@
+// Simple_Picker: safe shelf helper
+global string $gShelfTopLevel;
+
+// シェルフタブがなければ作成
+global proc sp_ensureShelf(string $shelfName){
+    global string $gShelfTopLevel;
+    if (!`shelfTabLayout -exists $gShelfTopLevel`) {
+        warning("[Simple_Picker] ShelfTop not initialized. Skipping shelf creation.");
+        return;
+    }
+    if (!`shelfLayout -exists $shelfName`) {
+        setParent $gShelfTopLevel;
+        shelfLayout -cellWidth 34 -cellHeight 34 $shelfName;
+    }
+}
+
+// ラベル一致ボタン削除
+global proc sp_removeShelfButtonByLabel(string $shelfName, string $label){
+    string $kids[] = `shelfLayout -q -ca $shelfName`;
+    for ($i=0; $i<size($kids); ++$i){
+        if (`shelfButton -q -l $kids[$i]` == $label){
+            deleteUI -control $kids[$i];
+            break;
+        }
+    }
+}
+
+// 追加 or 上書き
+global proc sp_addOrReplaceButton(string $shelfName, string $label, string $iconPath, string $command){
+    sp_ensureShelf($shelfName);
+    sp_removeShelfButtonByLabel($shelfName, $label);
+
+    shelfButton
+        -parent $shelfName
+        -image1 ($iconPath)
+        -label $label
+        -annotation ($label + " UI")
+        -sourceType "python"
+        -command $command;
+
+    saveAllShelves;
+}
+
+// ---------------------------------------------------------
+// エントリーポイント
+// ---------------------------------------------------------
+global proc add_to_shelf(string $shelfName, string $label, string $pyCmd, string $icon){
+    sp_addOrReplaceButton($shelfName, $label, $icon, $pyCmd);
+}
