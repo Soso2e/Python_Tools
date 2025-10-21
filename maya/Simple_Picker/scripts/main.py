@@ -11,8 +11,12 @@ Maya: 2020+ / PySide2 前提
 
 from typing import List, Set, Dict
 import re
+import os
+import json
+from pathlib import Path
 from maya import cmds
 from maya import OpenMayaUI as omui
+from pathlib import Path
 
 try:
     from PySide2 import QtWidgets, QtCore, QtGui
@@ -125,6 +129,10 @@ class ControllerPicker(QtWidgets.QDialog):
         right_btns = QtWidgets.QHBoxLayout()
         right_btns.addWidget(self.new_tab_btn)
         right_btns.addWidget(self.rename_tab_btn)
+        self.save_tabs_btn = QtWidgets.QPushButton("保存…", self)
+        self.load_tabs_btn = QtWidgets.QPushButton("読込…", self)
+        right_btns.addWidget(self.save_tabs_btn)
+        right_btns.addWidget(self.load_tabs_btn)
 
         right_layout = QtWidgets.QVBoxLayout()
         right_layout.addWidget(self.tabs)
@@ -161,6 +169,8 @@ class ControllerPicker(QtWidgets.QDialog):
 
         self.new_tab_btn.clicked.connect(self._create_new_tab)
         self.rename_tab_btn.clicked.connect(self._rename_current_tab)
+        self.save_tabs_btn.clicked.connect(self._save_tabs_dialog)
+        self.load_tabs_btn.clicked.connect(self._load_tabs_dialog)
 
         # 初期
         self.refresh_from_scene()
@@ -265,6 +275,98 @@ class ControllerPicker(QtWidgets.QDialog):
             return
         names = [i.data(QtCore.Qt.UserRole) for i in tab.list.selectedItems()]
         self._select_in_maya(names)
+
+    # ---------------- Serialize / Deserialize Tabs ----------------
+    def _serialize_tabs(self):
+        """UI上のタブ構成を辞書のリストに変換"""
+        result = []
+        for i in range(self.tabs.count()):
+            tab: PartsTab = self.tabs.widget(i)
+            result.append({
+                "title": self.tabs.tabText(i),
+                "items": tab.items(),
+            })
+        return result
+
+    def _deserialize_tabs(self, tabs_data):
+        """辞書からUIを再構築（既存タブは破棄）"""
+        # 既存削除
+        while self.tabs.count() > 0:
+            w = self.tabs.widget(0)
+            self.tabs.removeTab(0)
+            w.deleteLater()
+        # 復元
+        for info in tabs_data:
+            title = info.get("title", "Untitled")
+            items = info.get("items", [])
+            tab = PartsTab(title, self)
+            tab.set_items(items)
+            self.tabs.addTab(tab, title)
+            tab.list.itemSelectionChanged.connect(self._instant_select_from_tab)
+        self._ensure_default_tab()
+        self.tabs.setCurrentIndex(0)
+
+    def _scripts_dir(self) -> Path:
+        """main.py（このファイル）と同じディレクトリを返す"""
+        return Path(os.path.dirname(os.path.abspath(__file__)))
+
+    def _default_preset_dir(self) -> Path:
+        """プリセット保存用の既定ディレクトリ（ツールルート直下の presets/）"""
+        return (self._scripts_dir().parent / "presets")
+
+    def _save_tabs_dialog(self):
+        """名前を付けて保存（JSON）"""
+        # ★ 追加：presets ディレクトリを必ず作成
+        preset_dir = self._default_preset_dir()
+        preset_dir.mkdir(parents=True, exist_ok=True)
+        base = str(preset_dir)
+
+        fname, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "タブセットを保存",
+            os.path.join(base, "picker_tabs.json"),
+            "Tab Preset (*.json)"
+        )
+        if not fname:
+            return
+
+        # ★ 追加：選択されたパスの親ディレクトリを作成（保険）
+        Path(fname).parent.mkdir(parents=True, exist_ok=True)
+
+        # 拡張子補完
+        if not fname.lower().endswith(".json"):
+            fname += ".json"
+
+        data = {"tabs": self._serialize_tabs()}
+        try:
+            with open(fname, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            cmds.inViewMessage(amg=f"<hl>Saved:</hl> {fname}", pos="midCenter", fade=True)
+        except Exception as e:
+            cmds.warning(f"[ControllerPicker] Save failed: {e}")
+
+    def _load_tabs_dialog(self):
+        """ファイルを選んで読み込み（JSON）"""
+        # ★ 追加：presets ディレクトリを必ず作成
+        preset_dir = self._default_preset_dir()
+        preset_dir.mkdir(parents=True, exist_ok=True)
+        base = str(preset_dir)
+
+        fname, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "タブセットを読込",
+            base,
+            "Tab Preset (*.json)"
+        )
+        if not fname:
+            return
+        try:
+            with open(fname, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self._deserialize_tabs(data.get("tabs", []))
+            cmds.inViewMessage(amg=f"<hl>Loaded:</hl> {fname}", pos="midCenter", fade=True)
+        except Exception as e:
+            cmds.warning(f"[ControllerPicker] Load failed: {e}")
 
     # ---------------- Scene Sync ----------------
     def _install_selection_scriptjob(self):
