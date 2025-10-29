@@ -1,20 +1,27 @@
-// Simple_Picker: safe shelf helper
-global string $gShelfTopLevel;
+// Simple_Picker: シェルフ登録（シンプル版）
+// 目的：指定シェルフにボタンを「追加 or 上書き」し、確実に保存する
+// ポイント：Mayaの仕様差を避けるため、saveShelf は 2引数形式（棚名+保存先）を常に使用
 
-// シェルフタブがなければ作成
+global string $gShelfTopLevel; // Maya標準のシェルフ親レイアウト
+
+// 指定名のシェルフタブが無ければ作成
 global proc sp_ensureShelf(string $shelfName){
     global string $gShelfTopLevel;
+
+    // シェルフトップが未初期化の場合は中断（Maya起動直後など）
     if (!`shelfTabLayout -exists $gShelfTopLevel`) {
         warning("[Simple_Picker] ShelfTop not initialized. Skipping shelf creation.");
         return;
     }
+
+    // 同名のシェルフが無ければ新規作成
     if (!`shelfLayout -exists $shelfName`) {
         setParent $gShelfTopLevel;
         shelfLayout -cellWidth 34 -cellHeight 34 $shelfName;
     }
 }
 
-// ラベル一致ボタン削除
+// ラベル一致の既存ボタンを削除（上書き時に重複させないため）
 global proc sp_removeShelfButtonByLabel(string $shelfName, string $label){
     string $kids[] = `shelfLayout -q -ca $shelfName`;
     for ($i=0; $i<size($kids); ++$i){
@@ -25,11 +32,15 @@ global proc sp_removeShelfButtonByLabel(string $shelfName, string $label){
     }
 }
 
-// 追加 or 上書き
+// ボタンを追加（存在すれば上書き）し、シェルフを保存
 global proc sp_addOrReplaceButton(string $shelfName, string $label, string $iconPath, string $command){
+    // 1) シェルフの存在を担保
     sp_ensureShelf($shelfName);
+
+    // 2) 同ラベルの既存ボタンを除去
     sp_removeShelfButtonByLabel($shelfName, $label);
 
+    // 3) ボタン作成（Pythonコマンドを実行）
     shelfButton
         -parent $shelfName
         -image1 ($iconPath)
@@ -38,12 +49,16 @@ global proc sp_addOrReplaceButton(string $shelfName, string $label, string $icon
         -sourceType "python"
         -command $command;
 
-    saveAllShelves;
+    // 4) シェルフを保存（2引数形式：棚名 + 保存先ファイル）
+    string $pref = `internalVar -userPrefDir`;
+    string $shelvesDir = ($pref + "shelves/");
+    if (`filetest -d $shelvesDir` == 0) sysFile -md $shelvesDir; // 無ければ作成
+    string $file = ($shelvesDir + "shelf_" + $shelfName + ".mel");
+    saveShelf $shelfName $file;
 }
 
-// ---------------------------------------------------------
-// エントリーポイント
-// ---------------------------------------------------------
+// エントリーポイント：外部からはこのprocを source & 呼び出し
+// 例) add_to_shelf("Python", "Simple Picker", "pythonCmd", "/path/to/icon.png");
 global proc add_to_shelf(string $shelfName, string $label, string $pyCmd, string $icon){
     sp_addOrReplaceButton($shelfName, $label, $icon, $pyCmd);
 }
