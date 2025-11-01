@@ -1,21 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-汎用 Maya Drag & Drop インストーラ
---------------------------------
-任意ツールフォルダ内の drag_and_drop_install.py として配置し、
-Maya のビューポートにドラッグ＆ドロップすることでツールを自動インストールします。
 
-構造:
-MyTool/
-├─ icon/
-│   └─ MyTool.png
-├─ scripts/
-│   ├─ main.py
-│   └─ __init__.py
-├─ shelves/
-│   └─ add_to_shelf.mel
-└─ drag_and_drop_install.py
-"""
 
 from __future__ import annotations
 import os
