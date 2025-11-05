@@ -42,7 +42,7 @@ global proc sp_addOrReplaceButton(string $shelfName, string $label, string $icon
         -parent $safe
         -image1 ($iconPath)
         -label $label
-        -annotation ($label + " Tool")
+        -annotation ($label)
         -sourceType "python"
         -command $command;
 

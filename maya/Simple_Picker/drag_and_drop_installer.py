@@ -18,12 +18,12 @@
 
 from __future__ import annotations
 import os
-import sys
+import sys, re
 import shutil
 from maya import cmds, mel
 
 # 定数
-DEFAULT_SHELF_TAB_NAME = "Python"  # 既定のシェルフタブ名（存在しない場合は自動生成されます）
+DEFAULT_SHELF_TAB_NAME = "PyTools"
 
 # エントリーポイント
 def onMayaDroppedPythonFile(*_):
@@ -58,12 +58,14 @@ def install_tool() -> None:
     """
     this_py = os.path.abspath(__file__)
     tool_root = os.path.dirname(this_py)
-    tool_name = os.path.basename(tool_root)
-    shelf_tab_name = DEFAULT_SHELF_TAB_NAME
 
     src_scripts = os.path.join(tool_root, "scripts")
     src_icons = os.path.join(tool_root, "icon")
     src_mel = os.path.join(tool_root, "shelves", "add_to_shelf.mel")
+
+    tool_name = os.path.basename(tool_root)
+    tool_name_with_virsion = f"{tool_name} v{_get_version_from_init(src_scripts)}"
+    shelf_tab_name = DEFAULT_SHELF_TAB_NAME
 
     if not os.path.isfile(os.path.join(src_scripts, "main.py")):
         raise FileNotFoundError(f"main.py not found in: {src_scripts}")
@@ -95,7 +97,7 @@ def install_tool() -> None:
     )
 
     _remove_existing_shelf_button(shelf_name, tool_name)
-    _call_add_to_shelf(shelf_name, tool_name, py_cmd, _find_icon(dst_icon))
+    _call_add_to_shelf(shelf_name, tool_name_with_virsion, py_cmd, _find_icon(dst_icon))
 
     cmds.confirmDialog(
         title=tool_name,
@@ -109,6 +111,26 @@ def install_tool() -> None:
 
 
 # Helper Functions
+def _get_version_from_init(dir_path: str) -> str | None:
+    """指定ディレクトリの __init__.py から version を取得する。
+
+    Args:
+        dir_path: ディレクトリのパス
+
+    Returns:
+        version の文字列。見つからなければ None。
+    """
+    init_path = os.path.join(dir_path, "__init__.py")
+    if not os.path.isfile(init_path):
+        return None
+
+    with open(init_path, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    match = re.search(r'version\s*=\s*[\'"]([^\'"]+)[\'"]', text)
+    return match.group(1) if match else None
+
+
 def _copy_subdir(src: str, dst: str) -> None:
     """サブディレクトリを丸ごとコピーする。
 
