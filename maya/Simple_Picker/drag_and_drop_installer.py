@@ -4,16 +4,16 @@
 インストーラ用スクリプトです。以下の処理を行います。
 
 - ツールの `scripts/` と `icon/` をユーザスクリプトディレクトリ配下へコピー
-- `.mod` ファイルを生成し、パス管理は .mod で管理
+- シェルフボタン押下時に、一時的に `sys.path` と `XBMLANGPATH` を設定して起動
 - 指定したシェルフタブ（Python)上に起動ボタンを追加。二つ上のディレクトリ名を参照。
 
 設計方針:
-- ランタイムの `sys.path` や `XBMLANGPATH` への直接追加は行わず、再起動後に .mod が効く前提。
-- シェルフボタンは `main.run()` を呼び出します。インポート失敗時は再起動を促す警告を表示します。
+- ランタイムに `sys.path` と `XBMLANGPATH` を一時的に設定して起動
+- シェルフボタンは `main.run()` を呼び出します。インポート失敗時は警告を表示します。
 
 使い方:
 1) 本ファイルを Maya ビューポートへ D&D します。
-2) ダイアログの案内に従い、インストール完了後に必要であれば Maya を再起動してください。
+2) ダイアログの案内に従い、インストール完了後にシェルフから起動してください。
 """
 
 from __future__ import annotations
@@ -50,8 +50,8 @@ def install_tool() -> None:
     - 実行ファイルの場所からツールルートを判定
     - `scripts/`, `icon/`, `shelves/add_to_shelf.mel` の存在検証
     - ユーザスクリプトディレクトリ配下へ必要フォルダをコピー
-    - `.mod` ファイルの生成
     - シェルフボタンの作成
+    - シェルフボタン押下時にランタイムでパスを注入して起動（.mod 不使用）
 
     Raises:
         FileNotFoundError: 必須ファイルが見つからない場合
@@ -78,8 +78,9 @@ def install_tool() -> None:
     _copy_subdir(src_scripts, dst_scripts)
     _copy_subdir(src_icons, dst_icon)
 
-    # ランタイムでのパス注入は行わず、.mod のみで管理。
-    _ensure_mod_file(tool_name, dst_root)
+    # .mod は使わず、起動時にランタイムへパスを注入する方式に変更。
+    scripts_path = dst_scripts.replace("\\", "/")
+    icons_path = dst_icon.replace("\\", "/")
 
     shelf_name = _sanitize_shelf_name(shelf_tab_name)
     mel_path = src_mel.replace("\\", "/")
@@ -87,11 +88,10 @@ def install_tool() -> None:
 
     # 再起動前でもユーザーが押して様子を見られるよう、試行して失敗時は警告。
     py_cmd = (
-        "import importlib; "
-        "try: "
-        " import main; importlib.reload(main); main.run() "
-        "except ImportError: "
-        " import maya.cmds as cmds; cmds.warning('Module not found. Please restart Maya to complete installation.') "
+        "import sys, importlib; "
+        f"p=r'{scripts_path}'; "
+        "sys.path.append(p) if p not in sys.path else None; "
+        "import main; importlib.reload(main); main.run()"
     )
 
     _remove_existing_shelf_button(shelf_name, tool_name)
@@ -186,56 +186,6 @@ def _inview(msg: str) -> None:
         pass
 
 
-def _ensure_mod_file(tool_name: str, dst_root: str) -> None:
-    """`.mod` ファイルを `Documents/maya/modules` に生成する。
-
-    `scripts/__init__.py` に `version` 変数があればそれを読み取り、
-    `.mod` のバージョン表記に反映します。
-
-    書き出すキー:
-      - `PYTHONPATH +:= scripts`
-      - `MAYA_SCRIPT_PATH +:= scripts`
-      - `XBMLANGPATH +:= icon`
-
-    Args:
-        tool_name: ツール名（フォルダ名を想定）
-        dst_root: ユーザスクリプト配下のツールルート
-    """
-    maya_app_dir = os.environ.get("MAYA_APP_DIR") or os.path.join(os.path.expanduser("~"), "Documents", "maya")
-    modules_dir = os.path.join(maya_app_dir, "modules")
-    os.makedirs(modules_dir, exist_ok=True)
-    mod_path = os.path.join(modules_dir, f"{tool_name}.mod")
-
-    version = None
-    scripts_init = os.path.join(dst_root, 'scripts', '__init__.py')
-    if os.path.isfile(scripts_init):
-        try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(f"{tool_name}_scripts_init", scripts_init)
-            mod = importlib.util.module_from_spec(spec)
-            assert spec and spec.loader
-            spec.loader.exec_module(mod)  # type: ignore[assignment]
-            version = getattr(mod, "version", None)
-        except Exception:
-            # バージョン読取に失敗した場合は None のまま
-            pass
-
-    if version is None:
-        version = "1.0"
-
-    root = dst_root.replace("\\", "/")
-
-    with open(mod_path, "w", encoding="utf-8") as f:
-        f.write(
-            f"+ {tool_name} {version} {root}\n"
-            "requires maya any\n"
-            "PYTHONPATH +:= scripts\n"
-            "MAYA_SCRIPT_PATH +:= scripts\n"
-            "XBMLANGPATH +:= icon\n"
-        )
-    print(f"[Installer] .mod file generated at: {mod_path}")
-
-
 def _sanitize_shelf_name(name: str) -> str:
     """Maya シェルフレイアウト名として不適切な文字を `_` に置換する。
 
@@ -261,10 +211,15 @@ def _remove_existing_shelf_button(shelf_name: str, label: str) -> None:
         return
     children = cmds.shelfLayout(shelf_name, query=True, childArray=True) or []
     for child in children:
-        if cmds.control(child, query=True, label=True) == label:
-            try:
-                cmds.deleteUI(child)
-                print(f"[Installer] Removed existing shelf button '{label}' from shelf '{shelf_name}'.")
-            except Exception:
-                # 失敗しても致命的ではないため握りつぶす
-                pass
+        try:
+            if cmds.objectTypeUI(child) == 'shelfButton':
+                lbl = cmds.shelfButton(child, q=True, label=True)
+                if lbl == label:
+                    try:
+                        cmds.deleteUI(child)
+                        print(f"[Installer] Removed existing shelf button '{label}' from shelf '{shelf_name}'.")
+                    except Exception:
+                        pass
+        except Exception:
+            # 不明なUI型やクエリ失敗は無視
+            pass
