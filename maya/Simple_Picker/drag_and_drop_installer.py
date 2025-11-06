@@ -96,7 +96,7 @@ def install_tool() -> None:
         "import main; importlib.reload(main); main.run()"
     )
 
-    _remove_existing_shelf_button(shelf_name, tool_name)
+    _remove_existing_shelf_button(shelf_name, tool_name_with_virsion)
     _call_add_to_shelf(shelf_name, tool_name_with_virsion, py_cmd, _find_icon(dst_icon))
 
     cmds.confirmDialog(

@@ -7,6 +7,13 @@ global proc string sp_sanitizeShelfName(string $name) {
     $n = $toks[size($toks)-1];
     if (gmatch($n, "*.mel") || gmatch($n, "*.MEL"))
         $n = `substring $n 1 ((size($n))-4)`;
+    // 先頭の "shelf_" を取り除く（重複防止用）
+    if (gmatch($n, "shelf_*")) {
+        $n = `substring $n 7 (size($n))`; // "shelf_" は6文字、1始まりなので7から
+    }
+    // よくある記号をアンダースコアに正規化
+    $n = substituteAllString($n, "-", "_");
+    $n = substituteAllString($n, ".", "_");
     $n = substituteAllString($n, " ", "_");
     return $n;
 }
@@ -46,13 +53,6 @@ global proc sp_addOrReplaceButton(string $shelfName, string $label, string $icon
         -sourceType "python"
         -command $command;
 
-    // 保存
-    string $pref = `internalVar -userPrefDir`;
-    string $shelvesDir = ($pref + "shelves/");
-    if (`filetest -d $shelvesDir` == 0) sysFile -md $shelvesDir;
-    string $file = ($shelvesDir + "shelf_" + $safe + ".mel");
-    saveShelf $safe $file;
-    print("[Simple_Picker] Shelf saved: " + $file + "\n");
 }
 
 // --- エントリーポイント ---
