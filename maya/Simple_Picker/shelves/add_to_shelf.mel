@@ -1,64 +1,62 @@
-// Simple_Picker: シェルフ登録（シンプル版）
-// 目的：指定シェルフにボタンを「追加 or 上書き」し、確実に保存する
-// ポイント：Mayaの仕様差を避けるため、saveShelf は 2引数形式（棚名+保存先）を常に使用
+global string $gShelfTopLevel;
 
-global string $gShelfTopLevel; // Maya標準のシェルフ親レイアウト
+// --- 安全な棚名サニタイズ ---
+global proc string sp_sanitizeShelfName(string $name) {
+    string $n = substituteAllString($name, "\\", "/");
+    string $toks[]; tokenize($n, "/", $toks);
+    $n = $toks[size($toks)-1];
+    if (gmatch($n, "*.mel") || gmatch($n, "*.MEL"))
+        $n = `substring $n 1 ((size($n))-4)`;
+    // 先頭の "shelf_" を取り除く（重複防止用）
+    if (gmatch($n, "shelf_*")) {
+        $n = `substring $n 7 (size($n))`; // "shelf_" は6文字、1始まりなので7から
+    }
+    // よくある記号をアンダースコアに正規化
+    $n = substituteAllString($n, "-", "_");
+    $n = substituteAllString($n, ".", "_");
+    $n = substituteAllString($n, " ", "_");
+    return $n;
+}
 
-// 指定名のシェルフタブが無ければ作成
+// --- シェルフ存在確認 ---
 global proc sp_ensureShelf(string $shelfName){
     global string $gShelfTopLevel;
-
-    // シェルフトップが未初期化の場合は中断（Maya起動直後など）
-    if (!`shelfTabLayout -exists $gShelfTopLevel`) {
-        warning("[Simple_Picker] ShelfTop not initialized. Skipping shelf creation.");
-        return;
-    }
-
-    // 同名のシェルフが無ければ新規作成
+    if (!`shelfTabLayout -exists $gShelfTopLevel`) return;
     if (!`shelfLayout -exists $shelfName`) {
         setParent $gShelfTopLevel;
         shelfLayout -cellWidth 34 -cellHeight 34 $shelfName;
     }
 }
 
-// ラベル一致の既存ボタンを削除（上書き時に重複させないため）
+// --- 同名ラベル削除 ---
 global proc sp_removeShelfButtonByLabel(string $shelfName, string $label){
+    if (!`shelfLayout -exists $shelfName`) return;
     string $kids[] = `shelfLayout -q -ca $shelfName`;
     for ($i=0; $i<size($kids); ++$i){
         if (`shelfButton -q -l $kids[$i]` == $label){
             deleteUI -control $kids[$i];
-            break;
         }
     }
 }
 
-// ボタンを追加（存在すれば上書き）し、シェルフを保存
+// --- ボタン追加 ---
 global proc sp_addOrReplaceButton(string $shelfName, string $label, string $iconPath, string $command){
-    // 1) シェルフの存在を担保
-    sp_ensureShelf($shelfName);
+    string $safe = sp_sanitizeShelfName($shelfName);
+    sp_ensureShelf($safe);
+    sp_removeShelfButtonByLabel($safe, $label);
 
-    // 2) 同ラベルの既存ボタンを除去
-    sp_removeShelfButtonByLabel($shelfName, $label);
-
-    // 3) ボタン作成（Pythonコマンドを実行）
     shelfButton
-        -parent $shelfName
+        -parent $safe
         -image1 ($iconPath)
         -label $label
-        -annotation ($label + " UI")
+        -annotation ($label)
         -sourceType "python"
         -command $command;
 
-    // 4) シェルフを保存（2引数形式：棚名 + 保存先ファイル）
-    string $pref = `internalVar -userPrefDir`;
-    string $shelvesDir = ($pref + "shelves/");
-    if (`filetest -d $shelvesDir` == 0) sysFile -md $shelvesDir; // 無ければ作成
-    string $file = ($shelvesDir + "shelf_" + $shelfName + ".mel");
-    saveShelf $shelfName $file;
 }
 
-// エントリーポイント：外部からはこのprocを source & 呼び出し
-// 例) add_to_shelf("Python", "Simple Picker", "pythonCmd", "/path/to/icon.png");
+// --- エントリーポイント ---
 global proc add_to_shelf(string $shelfName, string $label, string $pyCmd, string $icon){
-    sp_addOrReplaceButton($shelfName, $label, $icon, $pyCmd);
+    string $safe = sp_sanitizeShelfName($shelfName);
+    sp_addOrReplaceButton($safe, $label, $icon, $pyCmd);
 }
