@@ -17,12 +17,16 @@ import re
 import maya.cmds as cmds
 
 
-# 検出用キーワード（大文字小文字区別なし）
+# 検出用キーワード
 DEFAULT_PATTERNS = {
-    "basecolor": r"(base(color)?|albedo|diffuse|col)(?!.*(normal|rough|metal))",
-    "metalness": r"(metal(lic|ness)?)(?!.*(rough|base|normal))",
-    "roughness": r"(rough(ness)?)(?!.*(metal|base|normal))",
-    "normal": r"(normal|norm|nrm)(?!.*(rough|metal|base))",
+    # 例: *_BaseColor.png, *_Albedo.tif, *_col.png などを想定
+    "basecolor": r"(?:base(?:color)?|albedo|diffuse|col)(?!.*(?:normal|rough|metal))",
+    # 例: *_Metalness.png, *_Metallic.exr
+    "metalness": r"(?:metal(?:lic|ness)?)(?!.*(?:rough|base|normal))",
+    # 例: *_Roughness.png
+    "roughness": r"(?:rough(?:ness)?)(?!.*(?:metal|base|normal))",
+    # 例: *_Normal.png, *_Norm.tif, *_nrm.exr
+    "normal": r"(?:normal|norm|nrm)(?!.*(?:rough|metal|base))",
 }
 
 # カラースペースの規定
@@ -34,6 +38,7 @@ COLORSPACE_RULES = {
 }
 
 
+
 # コア機能
 def find_maps_in_dir(
     directory: str,
@@ -43,7 +48,7 @@ def find_maps_in_dir(
 
     Args:
         directory: 検索するフォルダパス
-        patterns: 各チャンネルの正規表現（キーワード）
+        patterns: 各チャンネルの正規表現
 
     Returns:
         各チャンネル名 -> ファイルパス（見つからなければ None）
@@ -200,85 +205,116 @@ def build_material_with_maps(
 # UI
 # ============================================================
 class SP2AIWindow:
-    """Substanceテクスチャを aiStandardSurface に接続する簡易UI."""
-
     WINDOW = "SP2AI_Window"
 
     def __init__(self) -> None:
-        self.fields: Dict[str, str] = {}  # textField コントロール名
+        self.fields: Dict[str, str] = {}         # textFieldButtonGrp のコントロール名
+        self.status_labels: Dict[str, str] = {}  # 右側の ✓/— 表示用 text
+        self.example_labels: Dict[str, str] = {} # 下行の「例: ...」表示用 text
         self.material_name_field: str = ""
         self.dir_field: str = ""
 
     def show(self) -> None:
-        """ウィンドウを表示."""
         if cmds.window(self.WINDOW, exists=True):
             cmds.deleteUI(self.WINDOW)
 
-        win = cmds.window(self.WINDOW, title="SP → aiStandardSurface Builder", sizeable=False)
-        col = cmds.columnLayout(adjustableColumn=True, rowSpacing=6)
+        win = cmds.window(self.WINDOW, title="SP → aiStandardSurface Builder", sizeable=True)
+        form = cmds.formLayout()
+        main = cmds.columnLayout(adj=True, rowSpacing=8)
+
+        cmds.text(label="Substance → aiStandardSurface（ここに各マップを選択してください）", align="center", h=24)
+        cmds.separator(h=6, style="in")
 
         # マテリアル名
-        cmds.text(label="マテリアル名")
-        self.material_name_field = cmds.textField(text="M_SP_Mat")
+        cmds.frameLayout(label="マテリアル名", collapsable=False, borderVisible=True, marginHeight=4)
+        self.material_name_field = cmds.textField(text="M_SP_Mat", h=24)
+        cmds.setParent("..")
 
-        # ディレクトリ自動検出
-        cmds.separator(h=8, style="none")
-        cmds.text(label="テクスチャフォルダ（自動検出・任意）")
-        row = cmds.rowLayout(numberOfColumns=2, adjustableColumn=1, columnAlign=(1, "left"))
-        self.dir_field = cmds.textField(text="")
-        cmds.button(label="参照", c=lambda *_: self._pick_dir())
-        cmds.setParent(col)
+        # フォルダ自動検出
+        cmds.frameLayout(label="テクスチャフォルダ（自動検出・任意）", collapsable=False, borderVisible=True, marginHeight=4)
+        row = cmds.rowLayout(numberOfColumns=2, adjustableColumn=1, columnAttach=(1, "both", 4), columnWidth2=(300, 80))
+        self.dir_field = cmds.textField(text="", h=24, ann="このフォルダ内から BaseColor/Metalness/Roughness/Normal を自動検出します")
+        cmds.button(label="参照", h=24, c=lambda *_: self._pick_dir())
+        cmds.setParent("..")
+        cmds.setParent("..")
 
         # 個別ファイル指定
-        cmds.separator(h=10)
-        cmds.text(label="個別にテクスチャを指定（任意・自動検出より優先）")
-        for key, label in [
-            ("basecolor", "BaseColor"),
-            ("metalness", "Metalness"),
-            ("roughness", "Roughness"),
-            ("normal", "Normal"),
+        cmds.frameLayout(label="個別指定（自動検出より優先）", collapsable=False, borderVisible=True, marginHeight=4)
+        for key, title in [
+            ("basecolor", "BaseColor（カラー画像・sRGB）"),
+            ("metalness", "Metalness（グレースケール・Raw）"),
+            ("roughness", "Roughness（グレースケール・Raw）"),
+            ("normal", "Normal（Tangent Space・Raw）"),
         ]:
-            cmds.separator(h=4, style="none")
-            cmds.text(label=label)
-            row = cmds.rowLayout(numberOfColumns=2, adjustableColumn=1, columnAlign=(1, "left"))
-            tf = cmds.textField(text="")
-            self.fields[key] = tf
-            cmds.button(label="参照", c=lambda *_: self._pick_file(key))
-            cmds.setParent(col)
+            # 1行目: 入力欄 + 参照 + ステータス
+            row = cmds.rowLayout(numberOfColumns=3, adjustableColumn=1,
+                                 columnAttach=[(1, "both", 4), (2, "both", 4), (3, "both", 4)],
+                                 columnWidth3=(300, 80, 30))
+            grp = cmds.textFieldButtonGrp(
+                label=title, buttonLabel="参照", text="",
+                ann=EXPLANATIONS[key],
+                bc=lambda *_ , k=key: self._pick_file(k)
+            )
+            status = cmds.text(label="—", align="center", w=30, ann="選択/検出の状態（✓=OK, —=未指定）")
+            cmds.setParent("..")
+            # 2行目: 例表示（薄いガイド）
+            ex = cmds.text(label="例: " + EXPLANATIONS[key].split("（例: ")[-1].rstrip("）"), align="left", enable=False)
+            cmds.separator(h=6, style="none")
 
-        cmds.separator(h=12)
-        cmds.button(label="マテリアル作成", h=32, bgc=(0.3, 0.6, 0.3), c=lambda *_: self._build())
+            self.fields[key] = grp
+            self.status_labels[key] = status
+            self.example_labels[key] = ex
+        cmds.setParent("..")
 
+        # 実行
+        cmds.separator(h=8, style="none")
+        cmds.button(
+            label="▶ マテリアル作成", h=36, bgc=(0.25, 0.5, 0.25),
+            ann="指定されたテクスチャから aiStandardSurface を自動構築します",
+            c=lambda *_: self._build()
+        )
+
+        cmds.formLayout(form, e=True,
+                        attachForm=[(main, "top", 10), (main, "left", 10), (main, "right", 10), (main, "bottom", 10)])
         cmds.showWindow(win)
 
     # ---------- UI helpers ----------
     def _pick_dir(self) -> None:
-        """フォルダ選択ダイアログ."""
         d = cmds.fileDialog2(dialogStyle=2, fileMode=3)
         if d:
             cmds.textField(self.dir_field, e=True, text=d[0])
+            # 検出してUIに反映
+            auto = find_maps_in_dir(d[0])
+            for k, p in auto.items():
+                if p:
+                    cmds.textFieldButtonGrp(self.fields[k], e=True, text=p)
+            self._update_status()
 
     def _pick_file(self, key: str) -> None:
-        """ファイル選択ダイアログ."""
         f = cmds.fileDialog2(dialogStyle=2, fileMode=1,
                              fileFilter="Images (*.tx *.exr *.png *.tif *.tiff *.jpg *.jpeg *.bmp)")
         if f:
-            cmds.textField(self.fields[key], e=True, text=f[0])
+            cmds.textFieldButtonGrp(self.fields[key], e=True, text=f[0])
+            self._update_status()
 
     def _gather_inputs(self) -> Tuple[str, Dict[str, Optional[str]]]:
-        """UI入力を収集し、最終的なマップ辞書を構築."""
         mat_name = cmds.textField(self.material_name_field, q=True, text=True).strip()
-        # フォルダ自動検出
         dir_path = cmds.textField(self.dir_field, q=True, text=True).strip()
         auto = find_maps_in_dir(dir_path) if dir_path else {k: None for k in DEFAULT_PATTERNS.keys()}
 
-        # 個別指定の方を優先
         maps: Dict[str, Optional[str]] = {}
         for k in DEFAULT_PATTERNS.keys():
-            v = cmds.textField(self.fields[k], q=True, text=True).strip()
+            v = cmds.textFieldButtonGrp(self.fields[k], q=True, text=True).strip()
             maps[k] = v or auto.get(k)
-
         return mat_name, maps
+
+    def _update_status(self) -> None:
+        """各フィールドの ✓/— を更新"""
+        for k, grp in self.fields.items():
+            path = cmds.textFieldButtonGrp(grp, q=True, text=True).strip()
+            ok = bool(path and os.path.isfile(path))
+            label = "✓" if ok else "—"
+            cmds.text(self.status_labels[k], e=True, label=label)
 
     def _build(self) -> None:
         """作成ボタン押下時の処理."""
