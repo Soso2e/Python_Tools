@@ -30,11 +30,20 @@ DEFAULT_PATTERNS = {
 }
 
 # カラースペースの規定
+
 COLORSPACE_RULES = {
     "basecolor": "sRGB",
     "metalness": "Raw",
     "roughness": "Raw",
     "normal": "Raw",
+}
+
+# UIで使う説明文
+EXPLANATIONS = {
+    "basecolor": "BaseColor（例: *_BaseColor.png, *_Albedo.png, *_col.png）",
+    "metalness": "Metalness（金属度・例: *_Metalness.png, *_Metallic.exr）",
+    "roughness": "Roughness（粗さ・例: *_Roughness.png）",
+    "normal": "Normal（法線・例: *_Normal.png, *_Norm.tif, *_nrm.exr）",
 }
 
 
@@ -201,6 +210,71 @@ def build_material_with_maps(
     return mat, sg, file_nodes
 
 
+def find_maps_by_sample(sample_path: str) -> Dict[str, Optional[str]]:
+    directory = os.path.dirname(sample_path)
+    result = {k: None for k in ["basecolor", "metalness", "roughness", "normal"]}
+
+    if not directory or not os.path.isdir(directory):
+        return result
+
+    filename = os.path.basename(sample_path)
+    base_no_ext, ext = os.path.splitext(filename)
+
+    # UDIM（例: .1001）があれば取得、なければUDIMなしパターン
+    m = re.search(r"\.(\d{4})$", base_no_ext)
+    if m:
+        udim = m.group(1)
+        core = base_no_ext[: -(len(udim) + 1)]
+    else:
+        udim = None
+        core = base_no_ext
+
+    # core = "prefix_TexType"
+    if "_" not in core:
+        return result
+
+    prefix, sample_tex = core.rsplit("_", 1)
+
+    TEX_TYPES = {
+        "basecolor": "BaseColor",
+        "metalness": "Metalness",
+        "roughness": "Roughness",
+        "normal": "Normal",
+    }
+
+    files = set(os.listdir(directory))
+
+    PREFERRED_EXTS = [ext] + [e for e in [".tx", ".exr", ".png", ".tif", ".tiff", ".jpg", ".jpeg", ".bmp"] if e != ext]
+
+    def find_existing(base_core: str) -> Optional[str]:
+        for e in PREFERRED_EXTS:
+            name = base_core
+            if udim:
+                name = f"{name}.{udim}"
+            name = name + e
+            if name in files:
+                return os.path.join(directory, name)
+        return None
+
+    for chan, tex_token in TEX_TYPES.items():
+        base_cores = []
+        if chan == "metalness":
+            # Metalness と Metallic の両方を候補として探す
+            base_cores.append(f"{prefix}_Metalness")
+            base_cores.append(f"{prefix}_Metallic")
+        else:
+            base_cores.append(f"{prefix}_{tex_token}")
+
+        path = None
+        for bc in base_cores:
+            path = find_existing(bc)
+            if path:
+                break
+
+        result[chan] = path
+
+    return result
+
 # ============================================================
 # UI
 # ============================================================
@@ -212,7 +286,7 @@ class SP2AIWindow:
         self.status_labels: Dict[str, str] = {}  # 右側の ✓/— 表示用 text
         self.example_labels: Dict[str, str] = {} # 下行の「例: ...」表示用 text
         self.material_name_field: str = ""
-        self.dir_field: str = ""
+        self.auto_file_field: str = ""
 
     def show(self) -> None:
         if cmds.window(self.WINDOW, exists=True):
@@ -222,29 +296,29 @@ class SP2AIWindow:
         form = cmds.formLayout()
         main = cmds.columnLayout(adj=True, rowSpacing=8)
 
-        cmds.text(label="Substance → aiStandardSurface（ここに各マップを選択してください）", align="center", h=24)
+        cmds.text(label="Substance → aiStandardSurface", align="center", h=24)
         cmds.separator(h=6, style="in")
 
         # マテリアル名
         cmds.frameLayout(label="マテリアル名", collapsable=False, borderVisible=True, marginHeight=4)
-        self.material_name_field = cmds.textField(text="M_SP_Mat", h=24)
+        self.material_name_field = cmds.textField(text="", h=24)
         cmds.setParent("..")
 
-        # フォルダ自動検出
-        cmds.frameLayout(label="テクスチャフォルダ（自動検出・任意）", collapsable=False, borderVisible=True, marginHeight=4)
+        # 自動検索
+        cmds.frameLayout(label="自動検索", collapsable=False, borderVisible=True, marginHeight=4)
         row = cmds.rowLayout(numberOfColumns=2, adjustableColumn=1, columnAttach=(1, "both", 4), columnWidth2=(300, 80))
-        self.dir_field = cmds.textField(text="", h=24, ann="このフォルダ内から BaseColor/Metalness/Roughness/Normal を自動検出します")
-        cmds.button(label="参照", h=24, c=lambda *_: self._pick_dir())
+        self.auto_file_field = cmds.textField(text="", h=24, ann="任意の1ファイルを選択すると、同名テクスチャセットを自動検索します")
+        cmds.button(label="参照", h=24, c=lambda *_: self._pick_auto_file())
         cmds.setParent("..")
         cmds.setParent("..")
 
         # 個別ファイル指定
         cmds.frameLayout(label="個別指定（自動検出より優先）", collapsable=False, borderVisible=True, marginHeight=4)
         for key, title in [
-            ("basecolor", "BaseColor（カラー画像・sRGB）"),
-            ("metalness", "Metalness（グレースケール・Raw）"),
-            ("roughness", "Roughness（グレースケール・Raw）"),
-            ("normal", "Normal（Tangent Space・Raw）"),
+            ("basecolor", "BaseColor"),
+            ("metalness", "Metalness"),
+            ("roughness", "Roughness"),
+            ("normal", "Normal"),
         ]:
             # 1行目: 入力欄 + 参照 + ステータス
             row = cmds.rowLayout(numberOfColumns=3, adjustableColumn=1,
@@ -253,10 +327,12 @@ class SP2AIWindow:
             grp = cmds.textFieldButtonGrp(
                 label=title, buttonLabel="参照", text="",
                 ann=EXPLANATIONS[key],
+                columnAlign=(1, "left"),
                 bc=lambda *_ , k=key: self._pick_file(k)
             )
             status = cmds.text(label="—", align="center", w=30, ann="選択/検出の状態（✓=OK, —=未指定）")
             cmds.setParent("..")
+
             # 2行目: 例表示（薄いガイド）
             ex = cmds.text(label="例: " + EXPLANATIONS[key].split("（例: ")[-1].rstrip("）"), align="left", enable=False)
             cmds.separator(h=6, style="none")
@@ -268,23 +344,31 @@ class SP2AIWindow:
 
         # 実行
         cmds.separator(h=8, style="none")
+        row = cmds.rowLayout(numberOfColumns=2, columnWidth2=(200, 200), adjustableColumn=1, columnAttach=[(1, "both", 4), (2, "both", 4)])
         cmds.button(
             label="▶ マテリアル作成", h=36, bgc=(0.25, 0.5, 0.25),
             ann="指定されたテクスチャから aiStandardSurface を自動構築します",
             c=lambda *_: self._build()
         )
+        cmds.button(
+            label="▶ 作成して適用", h=36, bgc=(0.25, 0.35, 0.55),
+            ann="マテリアルを作成し、選択されたオブジェクトへ適用します",
+            c=lambda *_: self._build_and_apply()
+        )
+        cmds.setParent("..")
 
         cmds.formLayout(form, e=True,
                         attachForm=[(main, "top", 10), (main, "left", 10), (main, "right", 10), (main, "bottom", 10)])
         cmds.showWindow(win)
 
     # ---------- UI helpers ----------
-    def _pick_dir(self) -> None:
-        d = cmds.fileDialog2(dialogStyle=2, fileMode=3)
-        if d:
-            cmds.textField(self.dir_field, e=True, text=d[0])
-            # 検出してUIに反映
-            auto = find_maps_in_dir(d[0])
+    def _pick_auto_file(self):
+        f = cmds.fileDialog2(dialogStyle=2, fileMode=1,
+                             fileFilter="Images (*.tx *.exr *.png *.tif *.tiff *.jpg *.jpeg *.bmp)")
+        if f:
+            sample = f[0]
+            cmds.textField(self.auto_file_field, e=True, text=sample)
+            auto = find_maps_by_sample(sample)
             for k, p in auto.items():
                 if p:
                     cmds.textFieldButtonGrp(self.fields[k], e=True, text=p)
@@ -299,8 +383,12 @@ class SP2AIWindow:
 
     def _gather_inputs(self) -> Tuple[str, Dict[str, Optional[str]]]:
         mat_name = cmds.textField(self.material_name_field, q=True, text=True).strip()
-        dir_path = cmds.textField(self.dir_field, q=True, text=True).strip()
-        auto = find_maps_in_dir(dir_path) if dir_path else {k: None for k in DEFAULT_PATTERNS.keys()}
+        auto_file_path = cmds.textField(self.auto_file_field, q=True, text=True).strip()
+        if auto_file_path:
+            dir_path = os.path.dirname(auto_file_path)
+            auto = find_maps_in_dir(dir_path)
+        else:
+            auto = {k: None for k in DEFAULT_PATTERNS.keys()}
 
         maps: Dict[str, Optional[str]] = {}
         for k in DEFAULT_PATTERNS.keys():
@@ -333,6 +421,37 @@ class SP2AIWindow:
         # 結果表示（ユーザーにどれが接続されたか明示）
         used = [f"{k}: {os.path.basename(p) if p else '-'}" for k, p in maps.items()]
         cmds.inViewMessage(amg=f"<hl>作成完了:</hl> {mat} / {sg}<br>{'<br>'.join(used)}",
+                           pos="midCenter", fade=True, alpha=.9)
+
+    def _build_and_apply(self) -> None:
+        mat_name, maps = self._gather_inputs()
+
+        if not mat_name:
+            cmds.warning("マテリアル名を入力してください。")
+            return
+        if not any(maps.values()):
+            cmds.warning("テクスチャが見つかりません。フォルダ指定または個別指定を行ってください。")
+            return
+
+        # 選択オブジェクト確認
+        sel = cmds.ls(sl=True, long=True) or []
+        if not sel:
+            cmds.warning("適用先のオブジェクトを選択してください。")
+            return
+
+        # マテリアル作成
+        mat, sg, file_nodes = build_material_with_maps(mat_name, maps)
+
+        # 選択された全オブジェクトへ適用
+        for obj in sel:
+            try:
+                cmds.sets(obj, e=True, forceElement=sg)
+            except Exception:
+                pass
+
+        # 結果表示
+        used = [f"{k}: {os.path.basename(p) if p else '-'}" for k, p in maps.items()]
+        cmds.inViewMessage(amg=f"<hl>作成＋適用完了:</hl> {mat} を選択オブジェクトに適用<br>{'<br>'.join(used)}",
                            pos="midCenter", fade=True, alpha=.9)
 
 
