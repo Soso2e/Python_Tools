@@ -117,7 +117,7 @@ def create_ai_standard_surface(mat_name: str) -> Tuple[str, str]:
     return mat, sg
 
 
-def make_file_node(texture_path: str, colorspace: str) -> str:
+def make_file_node(texture_path: str, colorspace: str, alpha_is_luminance: bool = False) -> str:
     """file ノードを作成し、テクスチャパスとカラースペースを設定"""
     node = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
     cmds.setAttr(f"{node}.fileTextureName", texture_path, type="string")
@@ -125,6 +125,12 @@ def make_file_node(texture_path: str, colorspace: str) -> str:
     if cmds.attributeQuery("colorSpace", n=node, exists=True):
         try:
             cmds.setAttr(f"{node}.colorSpace", colorspace, type="string")
+        except RuntimeError:
+            pass
+    # Alpha is Luminance を有効化（Metalness / Roughness などグレースケール用途向け）
+    if alpha_is_luminance and cmds.attributeQuery("alphaIsLuminance", n=node, exists=True):
+        try:
+            cmds.setAttr(f"{node}.alphaIsLuminance", True)
         except RuntimeError:
             pass
     make_place2d_and_connect(node)
@@ -161,14 +167,14 @@ def connect_maps_to_ai(
 
     # Metalness
     if maps.get("metalness"):
-        f = make_file_node(maps["metalness"], COLORSPACE_RULES["metalness"])
+        f = make_file_node(maps["metalness"], COLORSPACE_RULES["metalness"], alpha_is_luminance=True)
         # グレースケール前提なのでRチャンネルを使う
         cmds.connectAttr(f"{f}.outColorR", f"{mat}.metalness", f=True)
         created_files["metalness"] = f
 
     # Roughness
     if maps.get("roughness"):
-        f = make_file_node(maps["roughness"], COLORSPACE_RULES["roughness"])
+        f = make_file_node(maps["roughness"], COLORSPACE_RULES["roughness"], alpha_is_luminance=True)
         cmds.connectAttr(f"{f}.outColorR", f"{mat}.specularRoughness", f=True)
         created_files["roughness"] = f
 
