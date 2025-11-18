@@ -1,0 +1,62 @@
+global string $gShelfTopLevel;
+
+// --- 安全な棚名サニタイズ ---
+global proc string sp_sanitizeShelfName(string $name) {
+    string $n = substituteAllString($name, "\\", "/");
+    string $toks[]; tokenize($n, "/", $toks);
+    $n = $toks[size($toks)-1];
+    if (gmatch($n, "*.mel") || gmatch($n, "*.MEL"))
+        $n = `substring $n 1 ((size($n))-4)`;
+    // 先頭の "shelf_" を取り除く（重複防止用）
+    if (gmatch($n, "shelf_*")) {
+        $n = `substring $n 7 (size($n))`; // "shelf_" は6文字、1始まりなので7から
+    }
+    // よくある記号をアンダースコアに正規化
+    $n = substituteAllString($n, "-", "_");
+    $n = substituteAllString($n, ".", "_");
+    $n = substituteAllString($n, " ", "_");
+    return $n;
+}
+
+// --- シェルフ存在確認 ---
+global proc sp_ensureShelf(string $shelfName){
+    global string $gShelfTopLevel;
+    if (!`shelfTabLayout -exists $gShelfTopLevel`) return;
+    if (!`shelfLayout -exists $shelfName`) {
+        setParent $gShelfTopLevel;
+        shelfLayout -cellWidth 34 -cellHeight 34 $shelfName;
+    }
+}
+
+// --- 同名ラベル削除 ---
+global proc sp_removeShelfButtonByLabel(string $shelfName, string $label){
+    if (!`shelfLayout -exists $shelfName`) return;
+    string $kids[] = `shelfLayout -q -ca $shelfName`;
+    for ($i=0; $i<size($kids); ++$i){
+        if (`shelfButton -q -l $kids[$i]` == $label){
+            deleteUI -control $kids[$i];
+        }
+    }
+}
+
+// --- ボタン追加 ---
+global proc sp_addOrReplaceButton(string $shelfName, string $label, string $iconPath, string $command){
+    string $safe = sp_sanitizeShelfName($shelfName);
+    sp_ensureShelf($safe);
+    sp_removeShelfButtonByLabel($safe, $label);
+
+    shelfButton
+        -parent $safe
+        -image1 ($iconPath)
+        -label $label
+        -annotation ($label)
+        -sourceType "python"
+        -command $command;
+
+}
+
+// --- エントリーポイント ---
+global proc add_to_shelf(string $shelfName, string $label, string $pyCmd, string $icon){
+    string $safe = sp_sanitizeShelfName($shelfName);
+    sp_addOrReplaceButton($safe, $label, $icon, $pyCmd);
+}
