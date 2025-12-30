@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "TSV Encoder for MoneyManager.md",
+                "file": "【制作仕様書】.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "TSV Encoder for MoneyManager"
+              "title": "【制作仕様書】"
             }
           }
         ]
@@ -185,8 +185,8 @@
   },
   "active": "49f1c88688ab85e5",
   "lastOpenFiles": [
-    "【制作仕様書】.md",
     "TSV Encoder for MoneyManager.md",
+    "【制作仕様書】.md",
     "Welcome.md"
   ]
 }

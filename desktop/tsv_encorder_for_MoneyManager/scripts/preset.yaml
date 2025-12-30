@@ -1,0 +1,8 @@
+name: default
+store_mapping:
+  セブン:
+    category: 食費
+    sub_category: コンビニ
+  ローソン:
+    category: 食費
+    sub_category: コンビニ
