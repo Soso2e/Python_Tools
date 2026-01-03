@@ -1,108 +1,68 @@
 # ui_app.py
 # -*- coding: utf-8 -*-
 
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-from typing import Optional
-
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QApplication,
-    QFileDialog,
-    QLabel,
-    QMessageBox,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
 from encoder_core import run_encode
 
 
-class App(QWidget):
-    """MMEnc UI (PySide6)."""
-
+class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle("MMEnc - MoneyManager Encoder")
-        self.setMinimumWidth(520)
+        self.title("MMEnc - MoneyManager Encoder")
+        self.geometry("520x260")
 
-        self.csv_path: Optional[str] = None
-        self.yaml_path: Optional[str] = None
+        self.csv_path: str | None = None
+        self.yaml_path: str | None = None
 
         self._build_ui()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        # CSV選択
+        tk.Button(self, text="CSVを選択", command=self.select_csv).pack(pady=5)
+        self.csv_label = tk.Label(self, text="未選択")
+        self.csv_label.pack()
 
-        # CSV
-        self.csv_button = QPushButton("CSVを選択")
-        self.csv_button.clicked.connect(self.select_csv)  # type: ignore[arg-type]
-        layout.addWidget(self.csv_button)
+        # YAML選択
+        tk.Button(self, text="YAMLを選択", command=self.select_yaml).pack(pady=5)
+        self.yaml_label = tk.Label(self, text="未選択")
+        self.yaml_label.pack()
 
-        self.csv_label = QLabel("未選択")
-        self.csv_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.csv_label.setWordWrap(True)
-        layout.addWidget(self.csv_label)
-
-        # YAML
-        self.yaml_button = QPushButton("YAMLを選択")
-        self.yaml_button.clicked.connect(self.select_yaml)  # type: ignore[arg-type]
-        layout.addWidget(self.yaml_button)
-
-        self.yaml_label = QLabel("未選択")
-        self.yaml_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.yaml_label.setWordWrap(True)
-        layout.addWidget(self.yaml_label)
-
-        # Run
-        self.run_button = QPushButton("TSV変換")
-        self.run_button.clicked.connect(self.run)  # type: ignore[arg-type]
-        layout.addWidget(self.run_button)
-
-        layout.addStretch(1)
+        # 変換実行
+        tk.Button(self, text="TSV変換", command=self.run).pack(pady=15)
 
     def select_csv(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "PayPay CSVを選択",
-            str(Path.home()),
-            "CSV Files (*.csv);;All Files (*)",
+        path = filedialog.askopenfilename(
+            title="PayPay CSVを選択",
+            filetypes=[("CSV", "*.csv")]
         )
         if path:
             self.csv_path = path
-            self.csv_label.setText(path)
+            self.csv_label.config(text=path)
 
     def select_yaml(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Preset YAMLを選択",
-            str(Path.home()),
-            "YAML Files (*.yaml *.yml);;All Files (*)",
+        path = filedialog.askopenfilename(
+            title="Preset YAMLを選択",
+            filetypes=[("YAML", "*.yaml *.yml")]
         )
         if path:
             self.yaml_path = path
-            self.yaml_label.setText(path)
+            self.yaml_label.config(text=path)
 
     def run(self) -> None:
         if not self.csv_path or not self.yaml_path:
-            QMessageBox.critical(self, "エラー", "CSVとYAMLの両方を選択してください")
+            messagebox.showerror("エラー", "CSVとYAMLの両方を選択してください")
             return
 
         ok, messages = run_encode(self.csv_path, self.yaml_path)
         if ok:
-            QMessageBox.information(self, "完了", "\n".join(messages))
+            messagebox.showinfo("完了", "\n".join(messages))
         else:
-            QMessageBox.critical(self, "エラー", "\n".join(messages))
+            messagebox.showerror("エラー", "\n".join(messages))
 
 
 def run_app() -> None:
-    """Run MMEnc UI."""
-    app = QApplication.instance() or QApplication(sys.argv)
-    win = App()
-    win.show()
-    app.exec()
+    app = App()
+    app.mainloop()
