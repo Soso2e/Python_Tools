@@ -187,6 +187,11 @@ def _find_joint_root_name(target: str) -> str:
 
     return _safe_name_from_target(target)
 
+def _parent_preserve_world(child: str, new_parent: str) -> None:
+    """Parent `child` under `new_parent` while preserving child's world transform."""
+    child_m = cmds.xform(child, q=True, ws=True, m=True)
+    cmds.parent(child, new_parent)
+    cmds.xform(child, ws=True, m=child_m)
 
 def _make_offset_group(
         ctrl: str,
@@ -199,7 +204,15 @@ def _make_offset_group(
     - Root container (reused): {jointRoot}_{InputName}_GRP
     - Per-target offset group (unique): {target}_{InputName}_CTL_GRP
 
-    Placement/orientation is applied to the per-target offset group.
+    Key rules (rig-friendly):
+    - Place/snap the per-target offset group in WORLD first.
+    - Then parent under the root container while preserving WORLD.
+    - CTRL stays clean (frozen at origin); offset group carries initial placement.
+
+    When match_orientation is True:
+      - Use a temporary constraint (bake-snap) to match target's world position+orientation.
+    When match_orientation is False:
+      - Match world position only; keep world rotation (0,0,0).
     """
     # Root container (reused)
     if cmds.objExists(desired_root_grp_name):
@@ -208,30 +221,31 @@ def _make_offset_group(
         root_grp = cmds.group(em=True, n=desired_root_grp_name)
         cmds.xform(root_grp, ws=True, t=(0.0, 0.0, 0.0), ro=(0.0, 0.0, 0.0))
 
-    # Per-target offset group (unique)
+    # Per-target offset group (unique) — create UNPARENTED first
     offset_grp = desired_offset_grp_name
     if cmds.objExists(offset_grp):
         offset_grp = _unique_name(offset_grp)
     offset_grp = cmds.group(em=True, n=offset_grp)
-    cmds.parent(offset_grp, root_grp)
 
-    pos = _get_world_position(target)
-
+    # 1) Snap in WORLD (before parenting)
     if match_orientation:
-        m = _get_world_matrix(target)
-        m = _matrix_remove_scale_shear(m)
-        cmds.xform(offset_grp, ws=True, m=m)
-
-        # Safety: enforce correct translation even if matrix translation is odd
-        cmds.xform(offset_grp, ws=True, t=pos)
+        # Bake-snap: match target's world TR (handles jointOrient better than raw matrix)
+        tmp = cmds.parentConstraint(target, offset_grp, mo=False)[0]
+        cmds.delete(tmp)
     else:
-        # World-oriented (rotation 0), position only
+        pos = _get_world_position(target)
         cmds.xform(offset_grp, ws=True, t=pos, ro=(0.0, 0.0, 0.0))
 
-    # Force pivot to current position (rotate/scale pivots)
-    cmds.xform(offset_grp, ws=True, rp=pos, sp=pos)
+    # 2) Force pivots to current position
+    pos_now = _get_world_position(offset_grp)
+    cmds.xform(offset_grp, ws=True, rp=pos_now, sp=pos_now)
 
+    # 3) Parent CTRL under offset group (CTRL remains zeroed)
     cmds.parent(ctrl, offset_grp)
+
+    # 4) Parent offset group under root container, preserving world
+    _parent_preserve_world(offset_grp, root_grp)
+
     return offset_grp
 
 
@@ -322,9 +336,9 @@ def _mirror_joint_hierarchy_with_controllers(
         if not child_grp or not parent_ctrl:
             continue
 
-        # Avoid Maya errors if already parented
+        # Parent while preserving child's world transform
         try:
-            cmds.parent(child_grp, parent_ctrl)
+            _parent_preserve_world(child_grp, parent_ctrl)
         except Exception:
             pass
 
