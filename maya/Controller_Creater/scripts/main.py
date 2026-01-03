@@ -88,8 +88,9 @@ def _get_world_matrix(target: str) -> List[float]:
 
 
 def _get_world_position(target: str) -> Tuple[float, float, float]:
-    m = _get_world_matrix(target)
-    return (m[12], m[13], m[14])
+    """Get robust world position for the target."""
+    t = cmds.xform(target, q=True, ws=True, t=True)
+    return (float(t[0]), float(t[1]), float(t[2]))
 
 def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
     """Return a matrix with orthonormal rotation axes (scale/shear removed), preserving translation."""
@@ -218,6 +219,9 @@ def _make_offset_group(
         m = _get_world_matrix(target)
         m = _matrix_remove_scale_shear(m)
         cmds.xform(offset_grp, ws=True, m=m)
+        # Safety: ensure translation is correct even if matrix translation is odd
+        pos = _get_world_position(target)
+        cmds.xform(offset_grp, ws=True, t=pos)
     else:
         pos = _get_world_position(target)
         cmds.xform(offset_grp, ws=True, t=pos, ro=(0.0, 0.0, 0.0))
