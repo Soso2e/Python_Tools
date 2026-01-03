@@ -3,8 +3,10 @@
 """
 Controller Creator (Rig-friendly, Single Shape: Circle)
 - UI lists selected objects.
-- Shape: Circle (Created at target position, then frozen).
-- Grouping: Reuses existing root groups to avoid clutter.
+- Shape: Circle (created at origin, frozen cleanly).
+- Placement/orientation: per-target offset group is positioned (World or Match Target).
+- Hierarchy: optionally mirrors joint hierarchy by parenting each child controller GROUP under its parent controller.
+- Constraints: controller drives target via parentConstraint (+ optional scaleConstraint).
 """
 
 from __future__ import annotations
@@ -60,17 +62,11 @@ def _unique_name(base: str) -> str:
     return f"{base}{i}"
 
 
-def _create_shape_transform(shape_key: str, name: str, target: str) -> str:
-    """
-    ターゲットの位置にコントローラを作成します。
-    """
+def _create_shape_transform(shape_key: str, name: str) -> str:
+    """Create controller shape at origin. Placement/orientation is handled by offset groups."""
     shape_def = SHAPE_DEFS.get(shape_key)
     if shape_def is None:
         raise RuntimeError(f"Unknown shape_key: {shape_key}")
-
-    # ターゲットの位置と回転を取得
-    target_pos = cmds.xform(target, q=True, ws=True, t=True)
-    target_rot = cmds.xform(target, q=True, ws=True, ro=True)
 
     ctrl = ""
     if shape_def == "circle":
@@ -82,8 +78,8 @@ def _create_shape_transform(shape_key: str, name: str, target: str) -> str:
     if not ctrl:
         raise RuntimeError(f"Failed to create shape for {shape_key}")
 
-    # ターゲットの位置へ移動
-    cmds.xform(ctrl, ws=True, t=target_pos, ro=target_rot)
+    # Keep clean TRS at origin
+    cmds.xform(ctrl, ws=True, t=(0.0, 0.0, 0.0), ro=(0.0, 0.0, 0.0))
     return ctrl
 
 
@@ -94,6 +90,35 @@ def _get_world_matrix(target: str) -> List[float]:
 def _get_world_position(target: str) -> Tuple[float, float, float]:
     m = _get_world_matrix(target)
     return (m[12], m[13], m[14])
+
+def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
+    """Return a matrix with orthonormal rotation axes (scale/shear removed), preserving translation."""
+    # Row-major axes
+    x = [m[0], m[1], m[2]]
+    y = [m[4], m[5], m[6]]
+    z = [m[8], m[9], m[10]]
+
+    def _norm(v: List[float]) -> List[float]:
+        import math
+        l = math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
+        if l < 1e-8:
+            return [0.0, 0.0, 0.0]
+        return [v[0]/l, v[1]/l, v[2]/l]
+
+    xn = _norm(x)
+    yn = _norm(y)
+    zn = _norm(z)
+
+    out = list(m)
+    out[0], out[1], out[2] = xn
+    out[4], out[5], out[6] = yn
+    out[8], out[9], out[10] = zn
+
+    # Preserve translation
+    out[12], out[13], out[14] = m[12], m[13], m[14]
+    out[3] = out[7] = out[11] = 0.0
+    out[15] = 1.0
+    return out
 
 
 def _freeze_trs(node: str) -> None:
@@ -166,25 +191,39 @@ def _make_offset_group(
         ctrl: str,
         target: str,
         match_orientation: bool,
-        desired_grp_name: str,
+        desired_root_grp_name: str,
+        desired_offset_grp_name: str,
 ) -> str:
-    """
-    指定された名前のグループが既にあればそれを使い、なければ作成します。
-    """
-    if cmds.objExists(desired_grp_name):
-        grp = desired_grp_name
-    else:
-        grp = cmds.group(em=True, n=desired_grp_name)
-        if match_orientation:
-            m = _get_world_matrix(target)
-            cmds.xform(grp, ws=True, m=m)
-        else:
-            pos = _get_world_position(target)
-            cmds.xform(grp, ws=True, t=pos)
+    """Create controller groups:
+    - Root container (reused): {jointRoot}_{InputName}_GRP
+    - Per-target offset group (unique): {target}_{InputName}_CTL_GRP
 
-    # コントローラをグループに入れる
-    cmds.parent(ctrl, grp)
-    return grp
+    Placement/orientation is applied to the per-target offset group.
+    """
+    # Root container (reused)
+    if cmds.objExists(desired_root_grp_name):
+        root_grp = desired_root_grp_name
+    else:
+        root_grp = cmds.group(em=True, n=desired_root_grp_name)
+        cmds.xform(root_grp, ws=True, t=(0.0, 0.0, 0.0), ro=(0.0, 0.0, 0.0))
+
+    # Per-target offset group (unique)
+    offset_grp = desired_offset_grp_name
+    if cmds.objExists(offset_grp):
+        offset_grp = _unique_name(offset_grp)
+    offset_grp = cmds.group(em=True, n=offset_grp)
+    cmds.parent(offset_grp, root_grp)
+
+    if match_orientation:
+        m = _get_world_matrix(target)
+        m = _matrix_remove_scale_shear(m)
+        cmds.xform(offset_grp, ws=True, m=m)
+    else:
+        pos = _get_world_position(target)
+        cmds.xform(offset_grp, ws=True, t=pos, ro=(0.0, 0.0, 0.0))
+
+    cmds.parent(ctrl, offset_grp)
+    return offset_grp
 
 
 def _constrain_target_to_ctrl(
@@ -214,28 +253,30 @@ def create_controller_for_target(
     base = _safe_name_from_target(target)
     input_name = input_name.strip() or "CTL"
 
-    # 命名規則
-    desired_ctrl_name = _unique_name(f"{base}_{input_name}")
+    # Naming
+    desired_ctrl_name = _unique_name(f"{base}_{input_name}_CTL")
     root_name = _find_joint_root_name(target)
-    desired_grp_name = f"{root_name}_{input_name}_GRP"
+    desired_root_grp_name = f"{root_name}_{input_name}_GRP"
+    desired_offset_grp_name = _unique_name(f"{base}_{input_name}_CTL_GRP")
 
-    # 1. コントローラをターゲットの位置に作成
-    ctrl = _create_shape_transform(shape_key, desired_ctrl_name, target)
+    # 1) Create ctrl at origin (clean)
+    ctrl = _create_shape_transform(shape_key, desired_ctrl_name)
 
-    # 2. フリーズ (位置は維持したまま数値を0にする)
+    # 2) Freeze at origin (safe)
     _freeze_trs(ctrl)
 
-    # 3. オフセットグループ (既存のグループがあれば集約)
+    # 3) Create per-target offset group under root container
     grp = _make_offset_group(
         ctrl=ctrl,
         target=target,
         match_orientation=match_orientation,
-        desired_grp_name=desired_grp_name,
+        desired_root_grp_name=desired_root_grp_name,
+        desired_offset_grp_name=desired_offset_grp_name,
     )
 
     _rename_shape_as_transform_shape(ctrl)
 
-    # 4. コンストレイント
+    # 4) Constrain target to ctrl
     constraints = _constrain_target_to_ctrl(
         target=target,
         ctrl=ctrl,
@@ -244,6 +285,39 @@ def create_controller_for_target(
     )
 
     return ctrl, grp, constraints
+# =========================
+# UI
+# =========================
+
+def _mirror_joint_hierarchy_with_controllers(
+        targets: Sequence[str],
+        target_to_ctrl: Dict[str, str],
+        target_to_grp: Dict[str, str],
+) -> None:
+    """Parent each target's controller GROUP under its parent target's controller.
+
+    Rule:
+    - child controller GROUP (*_CTL_GRP) -> parent under parent CTRL transform
+    - only applies when the parent exists in the created set
+    """
+    for t in targets:
+        parents = cmds.listRelatives(t, p=True, f=True) or []
+        if not parents:
+            continue
+        p = parents[0]
+        if p not in target_to_ctrl:
+            continue
+
+        child_grp = target_to_grp.get(t)
+        parent_ctrl = target_to_ctrl.get(p)
+        if not child_grp or not parent_ctrl:
+            continue
+
+        # Avoid Maya errors if already parented
+        try:
+            cmds.parent(child_grp, parent_ctrl)
+        except Exception:
+            pass
 
 
 # =========================
@@ -255,7 +329,8 @@ class _UI:
         self.win: Optional[str] = None
         self.shape_menu: Optional[str] = None
         self.target_list: Optional[str] = None
-        self.chk_match_orient: Optional[str] = None
+        self.orient_menu: Optional[str] = None
+        self.chk_build_hierarchy: Optional[str] = None
         self.chk_maintain_offset: Optional[str] = None
         self.chk_scale_constraint: Optional[str] = None
         self.txt_input_name: Optional[str] = None
@@ -276,7 +351,13 @@ class _UI:
         cmds.frameLayout(label="Create Options", collapsable=True, collapse=False, mw=8, mh=6)
         cmds.columnLayout(adj=True, rowSpacing=6)
 
-        self.chk_match_orient = cmds.checkBox(label="Match Target Orientation (recommended)", v=True)
+        cmds.text(l="Controller Orientation:")
+        self.orient_menu = cmds.optionMenu(w=260)
+        cmds.menuItem(label="World")
+        cmds.menuItem(label="Match Target")
+        cmds.optionMenu(self.orient_menu, e=True, v="Match Target")
+
+        self.chk_build_hierarchy = cmds.checkBox(label="Mirror Joint Hierarchy (recommended)", v=True)
         self.chk_maintain_offset = cmds.checkBox(label="Maintain Offset (mo)", v=False)
         self.chk_scale_constraint = cmds.checkBox(label="Scale Constraint (use with care)", v=False)
 
@@ -300,7 +381,15 @@ class _UI:
         cmds.setParent("..")
 
         cmds.separator(h=8, style="in")
-        cmds.text(l="Naming:\n- Ctrl : {target}_{InputName}\n- Grp  : {jointRoot}_{InputName}_GRP", align="left")
+        cmds.text(
+            l=(
+                "Naming:\n"
+                "- Ctrl : {target}_{InputName}_CTL\n"
+                "- Root : {jointRoot}_{InputName}_GRP\n"
+                "- Per  : {target}_{InputName}_CTL_GRP\n"
+            ),
+            align="left",
+        )
 
         cmds.showWindow(self.win)
 
@@ -308,13 +397,17 @@ class _UI:
         return "Circle"
 
     def _opt_match_orient(self) -> bool:
-        return bool(cmds.checkBox(self.chk_match_orient, q=True, v=True))
+        v = cmds.optionMenu(self.orient_menu, q=True, v=True)
+        return v == "Match Target"
 
     def _opt_maintain_offset(self) -> bool:
         return bool(cmds.checkBox(self.chk_maintain_offset, q=True, v=True))
 
     def _opt_scale_constraint(self) -> bool:
         return bool(cmds.checkBox(self.chk_scale_constraint, q=True, v=True))
+
+    def _opt_build_hierarchy(self) -> bool:
+        return bool(cmds.checkBox(self.chk_build_hierarchy, q=True, v=True))
 
     def _opt_input_name(self) -> str:
         name = cmds.textFieldGrp(self.txt_input_name, q=True, text=True) or "CTL"
@@ -347,20 +440,35 @@ class _UI:
         match_orient = self._opt_match_orient()
         maintain_offset = self._opt_maintain_offset()
         use_scale_constraint = self._opt_scale_constraint()
+        build_hierarchy = self._opt_build_hierarchy()
 
         created: List[str] = []
+        target_to_ctrl: Dict[str, str] = {}
+        target_to_grp: Dict[str, str] = {}
+
         cmds.undoInfo(openChunk=True)
         try:
+            # 1) Create controllers (independent)
             for t in targets:
                 try:
                     ctrl, grp, cons = create_controller_for_target(
-                        target=t, shape_key=shape_key, input_name=input_name,
-                        match_orientation=match_orient, maintain_offset=maintain_offset,
-                        use_scale_constraint=use_scale_constraint
+                        target=t,
+                        shape_key=shape_key,
+                        input_name=input_name,
+                        match_orientation=match_orient,
+                        maintain_offset=maintain_offset,
+                        use_scale_constraint=use_scale_constraint,
                     )
                     created.append(ctrl)
+                    target_to_ctrl[t] = ctrl
+                    target_to_grp[t] = grp
                 except Exception as e:
                     cmds.warning(f"Failed {t}: {e}")
+
+            # 2) Mirror hierarchy (group under parent ctrl)
+            if build_hierarchy and target_to_ctrl:
+                _mirror_joint_hierarchy_with_controllers(targets, target_to_ctrl, target_to_grp)
+
         finally:
             cmds.undoInfo(closeChunk=True)
 
