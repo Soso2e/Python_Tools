@@ -4,7 +4,12 @@
 Controller Creator (Rig-friendly, Single Shape: Circle)
 - UI lists selected objects.
 - Shape: Circle (created at origin, frozen cleanly).
-- Placement/orientation: per-target offset group is positioned (World or Match Target).
+- Circle Normal Axis: selectable X/Y/Z (controls cmds.circle nr).
+- Placement: per-target offset group is ALWAYS snapped to the target (position + orientation) via bake-snap.
+- Orientation:
+    - Match Target: controller inherits offset group's orientation (matches joint).
+    - World: controller's rotation is canceled to world (0,0,0), then rotation-only freeze is applied
+             so the NURBS curve becomes world-aligned while keeping ctrl transforms clean.
 - Hierarchy: optionally mirrors joint hierarchy by parenting each child controller GROUP under its parent controller.
 - Constraints: controller drives target via parentConstraint (+ optional scaleConstraint).
 """
@@ -62,7 +67,7 @@ def _unique_name(base: str) -> str:
     return f"{base}{i}"
 
 
-def _create_shape_transform(shape_key: str, name: str) -> str:
+def _create_shape_transform(shape_key: str, name: str, normal_axis: str) -> str:
     """Create controller shape at origin. Placement/orientation is handled by offset groups."""
     shape_def = SHAPE_DEFS.get(shape_key)
     if shape_def is None:
@@ -70,8 +75,17 @@ def _create_shape_transform(shape_key: str, name: str) -> str:
 
     ctrl = ""
     if shape_def == "circle":
-        # Circle oriented to Y-up plane (XZ plane)
-        ctrl = cmds.circle(n=name, ch=False, o=True, nr=(0, 1, 0), r=1.0)[0]
+        # Circle normal axis selectable (X/Y/Z)
+        axis = (normal_axis or "Y").upper()
+        if axis == "X":
+            nr = (1, 0, 0)
+        elif axis == "Z":
+            nr = (0, 0, 1)
+        else:
+            nr = (0, 1, 0)
+
+        ctrl = cmds.circle(n=name, ch=False, o=True, nr=nr, r=1.0)[0]
+
     elif isinstance(shape_def, CurveShapeDef):
         ctrl = cmds.curve(n=name, d=shape_def.degree, p=list(shape_def.points), k=list(shape_def.knots))
 
@@ -92,6 +106,7 @@ def _get_world_position(target: str) -> Tuple[float, float, float]:
     t = cmds.xform(target, q=True, ws=True, t=True)
     return (float(t[0]), float(t[1]), float(t[2]))
 
+
 def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
     """Return a matrix with orthonormal rotation axes (scale/shear removed), preserving translation."""
     # Row-major axes
@@ -101,10 +116,10 @@ def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
 
     def _norm(v: List[float]) -> List[float]:
         import math
-        l = math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
+        l = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
         if l < 1e-8:
             return [0.0, 0.0, 0.0]
-        return [v[0]/l, v[1]/l, v[2]/l]
+        return [v[0] / l, v[1] / l, v[2] / l]
 
     xn = _norm(x)
     yn = _norm(y)
@@ -124,6 +139,11 @@ def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
 
 def _freeze_trs(node: str) -> None:
     cmds.makeIdentity(node, apply=True, t=True, r=True, s=True, n=False)
+
+
+def _freeze_rot(node: str) -> None:
+    """Freeze rotation only (bake into shape), keeping translate/scale untouched."""
+    cmds.makeIdentity(node, apply=True, t=False, r=True, s=False, n=False)
 
 
 def _rename_shape_as_transform_shape(ctrl: str) -> None:
@@ -152,7 +172,7 @@ def _find_joint_root_name(target: str) -> str:
     def is_joint(n: str) -> bool:
         try:
             return cmds.nodeType(n) == "joint"
-        except:
+        except Exception:
             return False
 
     start_joint: Optional[str] = None
@@ -172,7 +192,8 @@ def _find_joint_root_name(target: str) -> str:
         cur = start_joint
         while True:
             p = cmds.listRelatives(cur, p=True, f=True) or []
-            if not p: break
+            if not p:
+                break
             if is_joint(p[0]):
                 cur = p[0]
             else:
@@ -183,9 +204,11 @@ def _find_joint_root_name(target: str) -> str:
     dag = long_name[0]
     if "|" in dag:
         parts = [p for p in dag.split("|") if p]
-        if parts: return _safe_name_from_target(parts[0])
+        if parts:
+            return _safe_name_from_target(parts[0])
 
     return _safe_name_from_target(target)
+
 
 def _parent_preserve_world(child: str, new_parent: str) -> None:
     """Parent `child` under `new_parent` while preserving child's world transform."""
@@ -193,26 +216,23 @@ def _parent_preserve_world(child: str, new_parent: str) -> None:
     cmds.parent(child, new_parent)
     cmds.xform(child, ws=True, m=child_m)
 
+
 def _make_offset_group(
         ctrl: str,
         target: str,
-        match_orientation: bool,
+        match_orientation: bool,  # kept for compatibility; placement is always snapped now
         desired_root_grp_name: str,
         desired_offset_grp_name: str,
+        orientation_mode: str,
 ) -> str:
     """Create controller groups:
     - Root container (reused): {jointRoot}_{InputName}_GRP
     - Per-target offset group (unique): {target}_{InputName}_CTL_GRP
 
     Key rules (rig-friendly):
-    - Place/snap the per-target offset group in WORLD first.
+    - Per-target offset group is snapped to target in WORLD (pos+orient) first.
     - Then parent under the root container while preserving WORLD.
-    - CTRL stays clean (frozen at origin); offset group carries initial placement.
-
-    When match_orientation is True:
-      - Use a temporary constraint (bake-snap) to match target's world position+orientation.
-    When match_orientation is False:
-      - Match world position only; keep world rotation (0,0,0).
+    - CTRL stays clean; for World mode we cancel ctrl rotation and freeze rotation only.
     """
     # Root container (reused)
     if cmds.objExists(desired_root_grp_name):
@@ -227,21 +247,26 @@ def _make_offset_group(
         offset_grp = _unique_name(offset_grp)
     offset_grp = cmds.group(em=True, n=offset_grp)
 
-    # 1) Snap in WORLD (before parenting)
-    if match_orientation:
-        # Bake-snap: match target's world TR (handles jointOrient better than raw matrix)
-        tmp = cmds.parentConstraint(target, offset_grp, mo=False)[0]
-        cmds.delete(tmp)
-    else:
-        pos = _get_world_position(target)
-        cmds.xform(offset_grp, ws=True, t=pos, ro=(0.0, 0.0, 0.0))
+    # 1) Snap offset group in WORLD (before parenting)
+    # Always snap so placement never breaks between modes.
+    tmp = cmds.parentConstraint(target, offset_grp, mo=False)[0]
+    cmds.delete(tmp)
 
     # 2) Force pivots to current position
     pos_now = _get_world_position(offset_grp)
     cmds.xform(offset_grp, ws=True, rp=pos_now, sp=pos_now)
 
-    # 3) Parent CTRL under offset group (CTRL remains zeroed)
+    # 3) Parent CTRL under offset group (do NOT keep world position)
     cmds.parent(ctrl, offset_grp, relative=True)
+
+    # World mode: keep the circle horizontal in WORLD by canceling inherited rotation,
+    # then bake it into the shape by freezing rotation only.
+    if (orientation_mode or "match").lower() == "world":
+        # Set CTRL world rotation to 0 -> Maya computes local values that cancel parent's rotation
+        cmds.xform(ctrl, ws=True, ro=(0.0, 0.0, 0.0))
+        _freeze_rot(ctrl)
+        # Keep CTRL clean
+        cmds.xform(ctrl, os=True, t=(0.0, 0.0, 0.0), ro=(0.0, 0.0, 0.0), s=(1.0, 1.0, 1.0))
 
     # 4) Parent offset group under root container, preserving world
     _parent_preserve_world(offset_grp, root_grp)
@@ -269,6 +294,8 @@ def create_controller_for_target(
         match_orientation: bool,
         maintain_offset: bool,
         use_scale_constraint: bool,
+        normal_axis: str,
+        orientation_mode: str,
 ) -> Tuple[str, str, List[str]]:
     if not cmds.objExists(target):
         raise RuntimeError(f"Target does not exist: {target}")
@@ -283,7 +310,7 @@ def create_controller_for_target(
     desired_offset_grp_name = _unique_name(f"{base}_{input_name}_CTL_GRP")
 
     # 1) Create ctrl at origin (clean)
-    ctrl = _create_shape_transform(shape_key, desired_ctrl_name)
+    ctrl = _create_shape_transform(shape_key, desired_ctrl_name, normal_axis=normal_axis)
 
     # 2) Freeze at origin (safe)
     _freeze_trs(ctrl)
@@ -295,6 +322,7 @@ def create_controller_for_target(
         match_orientation=match_orientation,
         desired_root_grp_name=desired_root_grp_name,
         desired_offset_grp_name=desired_offset_grp_name,
+        orientation_mode=orientation_mode,
     )
 
     _rename_shape_as_transform_shape(ctrl)
@@ -308,8 +336,10 @@ def create_controller_for_target(
     )
 
     return ctrl, grp, constraints
+
+
 # =========================
-# UI
+# Hierarchy mirror helper
 # =========================
 
 def _mirror_joint_hierarchy_with_controllers(
@@ -352,6 +382,7 @@ class _UI:
         self.win: Optional[str] = None
         self.shape_menu: Optional[str] = None
         self.target_list: Optional[str] = None
+        self.normal_menu: Optional[str] = None
         self.orient_menu: Optional[str] = None
         self.chk_build_hierarchy: Optional[str] = None
         self.chk_maintain_offset: Optional[str] = None
@@ -373,6 +404,13 @@ class _UI:
 
         cmds.frameLayout(label="Create Options", collapsable=True, collapse=False, mw=8, mh=6)
         cmds.columnLayout(adj=True, rowSpacing=6)
+
+        cmds.text(l="Circle Normal Axis:")
+        self.normal_menu = cmds.optionMenu(w=260)
+        cmds.menuItem(label="X")
+        cmds.menuItem(label="Y")
+        cmds.menuItem(label="Z")
+        cmds.optionMenu(self.normal_menu, e=True, v="Y")
 
         cmds.text(l="Controller Orientation:")
         self.orient_menu = cmds.optionMenu(w=260)
@@ -419,9 +457,13 @@ class _UI:
     def _get_shape_key(self) -> str:
         return "Circle"
 
-    def _opt_match_orient(self) -> bool:
+    def _opt_orientation_mode(self) -> str:
         v = cmds.optionMenu(self.orient_menu, q=True, v=True)
-        return v == "Match Target"
+        return "world" if v == "World" else "match"
+
+    def _opt_normal_axis(self) -> str:
+        v = cmds.optionMenu(self.normal_menu, q=True, v=True)
+        return (v or "Y").strip().upper()
 
     def _opt_maintain_offset(self) -> bool:
         return bool(cmds.checkBox(self.chk_maintain_offset, q=True, v=True))
@@ -439,7 +481,8 @@ class _UI:
     def refresh_targets(self) -> None:
         sel = cmds.ls(sl=True, long=True) or []
         cmds.textScrollList(self.target_list, e=True, removeAll=True)
-        if sel: cmds.textScrollList(self.target_list, e=True, append=sel)
+        if sel:
+            cmds.textScrollList(self.target_list, e=True, append=sel)
 
     def _get_all_targets_in_list(self) -> List[str]:
         return list(cmds.textScrollList(self.target_list, q=True, allItems=True) or [])
@@ -449,18 +492,25 @@ class _UI:
 
     def create_for_all(self) -> None:
         targets = self._get_all_targets_in_list()
-        if not targets: cmds.warning("List is empty."); return
+        if not targets:
+            cmds.warning("List is empty.")
+            return
         self._create_batch(targets)
 
     def create_for_selected(self) -> None:
         targets = self._get_selected_targets_in_list()
-        if not targets: cmds.warning("No selection in list."); return
+        if not targets:
+            cmds.warning("No selection in list.")
+            return
         self._create_batch(targets)
 
     def _create_batch(self, targets: Sequence[str]) -> None:
         shape_key = self._get_shape_key()
         input_name = self._opt_input_name()
-        match_orient = self._opt_match_orient()
+        orientation_mode = self._opt_orientation_mode()
+        match_orient = (orientation_mode == "match")
+        normal_axis = self._opt_normal_axis()
+
         maintain_offset = self._opt_maintain_offset()
         use_scale_constraint = self._opt_scale_constraint()
         build_hierarchy = self._opt_build_hierarchy()
@@ -481,6 +531,8 @@ class _UI:
                         match_orientation=match_orient,
                         maintain_offset=maintain_offset,
                         use_scale_constraint=use_scale_constraint,
+                        normal_axis=normal_axis,
+                        orientation_mode=orientation_mode,
                     )
                     created.append(ctrl)
                     target_to_ctrl[t] = ctrl
