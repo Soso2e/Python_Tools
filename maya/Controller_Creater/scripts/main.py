@@ -215,16 +215,21 @@ def _make_offset_group(
     offset_grp = cmds.group(em=True, n=offset_grp)
     cmds.parent(offset_grp, root_grp)
 
+    pos = _get_world_position(target)
+
     if match_orientation:
         m = _get_world_matrix(target)
         m = _matrix_remove_scale_shear(m)
         cmds.xform(offset_grp, ws=True, m=m)
-        # Safety: ensure translation is correct even if matrix translation is odd
-        pos = _get_world_position(target)
+
+        # Safety: enforce correct translation even if matrix translation is odd
         cmds.xform(offset_grp, ws=True, t=pos)
     else:
-        pos = _get_world_position(target)
+        # World-oriented (rotation 0), position only
         cmds.xform(offset_grp, ws=True, t=pos, ro=(0.0, 0.0, 0.0))
+
+    # Force pivot to current position (rotate/scale pivots)
+    cmds.xform(offset_grp, ws=True, rp=pos, sp=pos)
 
     cmds.parent(ctrl, offset_grp)
     return offset_grp
