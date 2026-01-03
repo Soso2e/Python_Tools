@@ -1,17 +1,18 @@
-# main.py
 # -*- coding: utf-8 -*-
-"""
-Controller Creator (Rig-friendly, Single Shape: Circle)
-- UI lists selected objects.
-- Shape: Circle (created at origin, frozen cleanly).
-- Circle Normal Axis: selectable X/Y/Z (controls cmds.circle nr).
-- Placement: per-target offset group is ALWAYS snapped to the target (position + orientation) via bake-snap.
-- Orientation:
-    - Match Target: controller inherits offset group's orientation (matches joint).
-    - World: controller's rotation is canceled to world (0,0,0), then rotation-only freeze is applied
-             so the NURBS curve becomes world-aligned while keeping ctrl transforms clean.
-- Hierarchy: optionally mirrors joint hierarchy by parenting each child controller GROUP under its parent controller.
-- Constraints: controller drives target via parentConstraint (+ optional scaleConstraint).
+"""コントローラー作成ツール(リグフレンドリー、単一形状：円)。
+
+UIで選択したオブジェクトをリスト表示し、各ターゲットに対してコントローラーを作成します。
+形状は円のみで、原点で作成され、クリーンにフリーズされます。
+
+主な機能:
+    - 円の法線軸: X/Y/Z選択可能(cmds.circle nrパラメータを制御)
+    - 配置: ターゲットごとのオフセットグループは常にターゲットにスナップ(位置+方向)
+    - 方向:
+        - Match Target: コントローラーはオフセットグループの方向を継承(ジョイントに一致)
+        - World: コントローラーの回転をワールド(0,0,0)にキャンセルし、回転のみフリーズを適用
+                 これによりNURBSカーブがワールド整列され、ctrlトランスフォームはクリーンに保たれます
+    - 階層: オプションでジョイント階層をミラーリング(各子コントローラーGROUPを親コントローラー下に配置)
+    - コンストレイント: コントローラーがparentConstraint(+オプションでscaleConstraint)でターゲットを駆動
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import maya.cmds as cmds
 
 # =========================
-# Shape definitions
+# 形状定義
 # =========================
 
 Point = Tuple[float, float, float]
@@ -30,22 +31,34 @@ Point = Tuple[float, float, float]
 
 @dataclass(frozen=True)
 class CurveShapeDef:
+    """NURBSカーブの形状定義。
+
+    Attributes:
+        degree: カーブの次数。
+        points: コントロールポイントのタプル。
+        knots: ノットベクトルのタプル。
+    """
     degree: int
     points: Tuple[Point, ...]
     knots: Tuple[float, ...]
 
 
-ShapeDef = Union[str, CurveShapeDef]  # "circle" or CurveShapeDef
+ShapeDef = Union[str, CurveShapeDef]
 
 
 def _shape_defs() -> Dict[str, ShapeDef]:
+    """利用可能な形状定義の辞書を返す。
+
+    Returns:
+        形状名をキーとした形状定義の辞書。
+    """
     defs: Dict[str, ShapeDef] = {}
     defs["Circle"] = "circle"
     return defs
 
 
 # =========================
-# Core logic
+# コアロジック
 # =========================
 
 WINDOW_NAME = "soso_ctrl_creator_win"
@@ -54,11 +67,32 @@ SHAPE_DEFS: Dict[str, ShapeDef] = _shape_defs()
 
 
 def _safe_name_from_target(target: str) -> str:
+    """ターゲット名から安全な名前を生成する。
+
+    ロングネームから最後の要素を抽出し、コロンをアンダースコアに置換します。
+
+    Args:
+        target: Mayaオブジェクトの名前(ロングネーム可)。
+
+    Returns:
+        安全な名前文字列。
+    """
     base = target.split("|")[-1]
     return base.replace(":", "_")
 
 
 def _unique_name(base: str) -> str:
+    """ユニークな名前を生成する。
+
+    指定された名前が存在しない場合はそのまま返し、存在する場合は
+    末尾に数字を付加してユニークな名前を生成します。
+
+    Args:
+        base: ベースとなる名前。
+
+    Returns:
+        ユニークな名前文字列。
+    """
     if not cmds.objExists(base):
         return base
     i = 1
@@ -68,14 +102,29 @@ def _unique_name(base: str) -> str:
 
 
 def _create_shape_transform(shape_key: str, name: str, normal_axis: str) -> str:
-    """Create controller shape at origin. Placement/orientation is handled by offset groups."""
+    """コントローラー形状を原点に作成する。
+
+    配置と方向はオフセットグループで制御します。
+    円の法線軸(X/Y/Z)を選択可能です。
+
+    Args:
+        shape_key: 形状の種類("Circle"など)。
+        name: 作成するトランスフォームの名前。
+        normal_axis: 円の法線軸("X", "Y", "Z")。
+
+    Returns:
+        作成されたコントローラーのトランスフォーム名。
+
+    Raises:
+        RuntimeError: 未知の形状キーまたは作成に失敗した場合。
+    """
     shape_def = SHAPE_DEFS.get(shape_key)
     if shape_def is None:
         raise RuntimeError(f"Unknown shape_key: {shape_key}")
 
     ctrl = ""
     if shape_def == "circle":
-        # Circle normal axis selectable (X/Y/Z)
+        # 円の法線軸を選択可能 (X/Y/Z)
         axis = (normal_axis or "Y").upper()
         if axis == "X":
             nr = (1, 0, 0)
@@ -92,24 +141,49 @@ def _create_shape_transform(shape_key: str, name: str, normal_axis: str) -> str:
     if not ctrl:
         raise RuntimeError(f"Failed to create shape for {shape_key}")
 
-    # Keep clean TRS at origin
+    # 原点でクリーンなTRSを保持
     cmds.xform(ctrl, ws=True, t=(0.0, 0.0, 0.0), ro=(0.0, 0.0, 0.0))
     return ctrl
 
 
 def _get_world_matrix(target: str) -> List[float]:
+    """ターゲットのワールドマトリックスを取得する。
+
+    Args:
+        target: Mayaオブジェクトの名前。
+
+    Returns:
+        16要素のワールドマトリックスリスト。
+    """
     return [float(v) for v in cmds.xform(target, q=True, ws=True, m=True)]
 
 
 def _get_world_position(target: str) -> Tuple[float, float, float]:
-    """Get robust world position for the target."""
+    """ターゲットの堅牢なワールド位置を取得する。
+
+    Args:
+        target: Mayaオブジェクトの名前。
+
+    Returns:
+        (x, y, z)のワールド座標タプル。
+    """
     t = cmds.xform(target, q=True, ws=True, t=True)
     return (float(t[0]), float(t[1]), float(t[2]))
 
 
 def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
-    """Return a matrix with orthonormal rotation axes (scale/shear removed), preserving translation."""
-    # Row-major axes
+    """マトリックスからスケールとシアーを除去する。
+
+    正規直交化された回転軸を持つマトリックスを返します。
+    移動成分は保持されます。
+
+    Args:
+        m: 16要素の4x4マトリックスリスト(行優先)。
+
+    Returns:
+        正規化された回転軸と元の移動成分を持つマトリックス。
+    """
+    # 行優先の軸
     x = [m[0], m[1], m[2]]
     y = [m[4], m[5], m[6]]
     z = [m[8], m[9], m[10]]
@@ -130,7 +204,7 @@ def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
     out[4], out[5], out[6] = yn
     out[8], out[9], out[10] = zn
 
-    # Preserve translation
+    # 移動成分を保持
     out[12], out[13], out[14] = m[12], m[13], m[14]
     out[3] = out[7] = out[11] = 0.0
     out[15] = 1.0
@@ -138,15 +212,35 @@ def _matrix_remove_scale_shear(m: List[float]) -> List[float]:
 
 
 def _freeze_trs(node: str) -> None:
+    """トランスフォーム属性をフリーズする。
+
+    移動・回転・スケールをすべてフリーズします。
+
+    Args:
+        node: フリーズするノードの名前。
+    """
     cmds.makeIdentity(node, apply=True, t=True, r=True, s=True, n=False)
 
 
 def _freeze_rot(node: str) -> None:
-    """Freeze rotation only (bake into shape), keeping translate/scale untouched."""
+    """回転のみをフリーズする。
+
+    回転を形状に焼き込み、移動とスケールは変更しません。
+
+    Args:
+        node: フリーズするノードの名前。
+    """
     cmds.makeIdentity(node, apply=True, t=False, r=True, s=False, n=False)
 
 
 def _rename_shape_as_transform_shape(ctrl: str) -> None:
+    """形状ノードをトランスフォーム名に基づいてリネームする。
+
+    単一の形状の場合は{ctrl}Shape、複数の場合は{ctrl}Shape1, Shape2...とします。
+
+    Args:
+        ctrl: トランスフォームノードの名前。
+    """
     shapes = cmds.listRelatives(ctrl, s=True, ni=True, f=False) or []
     if not shapes:
         return
@@ -166,6 +260,17 @@ def _rename_shape_as_transform_shape(ctrl: str) -> None:
 
 
 def _find_joint_root_name(target: str) -> str:
+    """ターゲットのジョイント階層のルート名を検索する。
+
+    ターゲットから親をたどり、最上位のジョイントノード名を返します。
+    ジョイントが見つからない場合はDAG階層の最上位ノード名を返します。
+
+    Args:
+        target: 検索開始するターゲットノードの名前。
+
+    Returns:
+        ジョイントルートまたは階層ルートの安全な名前。
+    """
     if not cmds.objExists(target):
         return _safe_name_from_target(target)
 
@@ -211,7 +316,15 @@ def _find_joint_root_name(target: str) -> str:
 
 
 def _parent_preserve_world(child: str, new_parent: str) -> None:
-    """Parent `child` under `new_parent` while preserving child's world transform."""
+    """ワールドトランスフォームを保持しながら親子付けする。
+
+    子ノードのワールド空間でのトランスフォームを記憶し、
+    親子付け後に同じワールド位置を復元します。
+
+    Args:
+        child: 子ノードの名前。
+        new_parent: 新しい親ノードの名前。
+    """
     child_m = cmds.xform(child, q=True, ws=True, m=True)
     cmds.parent(child, new_parent)
     cmds.xform(child, ws=True, m=child_m)
@@ -220,55 +333,67 @@ def _parent_preserve_world(child: str, new_parent: str) -> None:
 def _make_offset_group(
         ctrl: str,
         target: str,
-        match_orientation: bool,  # kept for compatibility; placement is always snapped now
+        match_orientation: bool,
         desired_root_grp_name: str,
         desired_offset_grp_name: str,
         orientation_mode: str,
 ) -> str:
-    """Create controller groups:
-    - Root container (reused): {jointRoot}_{InputName}_GRP
-    - Per-target offset group (unique): {target}_{InputName}_CTL_GRP
+    """コントローラーグループを作成する。
 
-    Key rules (rig-friendly):
-    - Per-target offset group is snapped to target in WORLD (pos+orient) first.
-    - Then parent under the root container while preserving WORLD.
-    - CTRL stays clean; for World mode we cancel ctrl rotation and freeze rotation only.
+    - ルートコンテナ(再利用): {jointRoot}_{InputName}_GRP
+    - ターゲットごとのオフセットグループ(ユニーク): {target}_{InputName}_CTL_GRP
+
+    リグフレンドリーな主要ルール:
+    - ターゲットごとのオフセットグループは最初にワールド空間でターゲットにスナップ(位置+方向)。
+    - その後、ワールドを保持しながらルートコンテナ下に親子付け。
+    - CTRLはクリーンに保持; Worldモードでは回転をキャンセルし回転のみフリーズ。
+
+    Args:
+        ctrl: コントローラートランスフォームの名前。
+        target: スナップ先のターゲットノードの名前。
+        match_orientation: 互換性のために保持(配置は常にスナップされます)。
+        desired_root_grp_name: ルートグループの希望名。
+        desired_offset_grp_name: オフセットグループの希望名。
+        orientation_mode: "match"または"world"。
+
+    Returns:
+        作成されたオフセットグループの名前。
     """
-    # Root container (reused)
+    # ルートコンテナ(再利用)
     if cmds.objExists(desired_root_grp_name):
         root_grp = desired_root_grp_name
     else:
         root_grp = cmds.group(em=True, n=desired_root_grp_name)
         cmds.xform(root_grp, ws=True, t=(0.0, 0.0, 0.0), ro=(0.0, 0.0, 0.0))
 
-    # Per-target offset group (unique) — create UNPARENTED first
+    # ターゲットごとのオフセットグループ(ユニーク) — 最初は親なしで作成
     offset_grp = desired_offset_grp_name
     if cmds.objExists(offset_grp):
         offset_grp = _unique_name(offset_grp)
     offset_grp = cmds.group(em=True, n=offset_grp)
 
-    # 1) Snap offset group in WORLD (before parenting)
-    # Always snap so placement never breaks between modes.
+    # 1) オフセットグループをワールド空間でスナップ(親子付け前)
+    # モード間で配置が崩れないように常にスナップします。
     tmp = cmds.parentConstraint(target, offset_grp, mo=False)[0]
     cmds.delete(tmp)
 
-    # 2) Force pivots to current position
+    # 2) ピボットを現在位置に強制
     pos_now = _get_world_position(offset_grp)
     cmds.xform(offset_grp, ws=True, rp=pos_now, sp=pos_now)
 
-    # 3) Parent CTRL under offset group (do NOT keep world position)
+    # 3) CTRLをオフセットグループ下に親子付け(ワールド位置は保持しない)
     cmds.parent(ctrl, offset_grp, relative=True)
 
-    # World mode: keep the circle horizontal in WORLD by canceling inherited rotation,
-    # then bake it into the shape by freezing rotation only.
+    # Worldモード: 継承された回転をキャンセルして円をワールド水平に保ち、
+    # 回転のみフリーズして形状に焼き込みます。
     if (orientation_mode or "match").lower() == "world":
-        # Set CTRL world rotation to 0 -> Maya computes local values that cancel parent's rotation
+        # CTRLのワールド回転を0に設定 -> Mayaが親の回転をキャンセルするローカル値を計算
         cmds.xform(ctrl, ws=True, ro=(0.0, 0.0, 0.0))
         _freeze_rot(ctrl)
-        # Keep CTRL clean
+        # CTRLをクリーンに保持
         cmds.xform(ctrl, os=True, t=(0.0, 0.0, 0.0), ro=(0.0, 0.0, 0.0), s=(1.0, 1.0, 1.0))
 
-    # 4) Parent offset group under root container, preserving world
+    # 4) オフセットグループをルートコンテナ下に親子付け、ワールドを保持
     _parent_preserve_world(offset_grp, root_grp)
 
     return offset_grp
@@ -280,6 +405,19 @@ def _constrain_target_to_ctrl(
         maintain_offset: bool,
         use_scale_constraint: bool,
 ) -> List[str]:
+    """ターゲットにコンストレイントを作成する。
+
+    parentConstraintを作成し、オプションでscaleConstraintも追加します。
+
+    Args:
+        target: コンストレイント先のターゲットノード。
+        ctrl: コンストレイント元のコントローラー。
+        maintain_offset: オフセットを維持するかどうか。
+        use_scale_constraint: scaleConstraintを追加するかどうか。
+
+    Returns:
+        作成されたコンストレイントノードのリスト。
+    """
     created: List[str] = []
     created.append(cmds.parentConstraint(ctrl, target, mo=maintain_offset)[0])
     if use_scale_constraint:
@@ -297,25 +435,49 @@ def create_controller_for_target(
         normal_axis: str,
         orientation_mode: str,
 ) -> Tuple[str, str, List[str]]:
+    """ターゲットに対してコントローラーを作成する。
+
+    以下の手順でコントローラーを作成します:
+    1. 原点でコントローラー形状を作成(クリーン)
+    2. 原点でフリーズ(安全)
+    3. ルートコンテナ下にターゲットごとのオフセットグループを作成
+    4. ターゲットをコントローラーにコンストレイント
+
+    Args:
+        target: コントローラーを作成するターゲットノード。
+        shape_key: 形状の種類。
+        input_name: 命名に使用する入力名。
+        match_orientation: 方向をターゲットに一致させるか。
+        maintain_offset: コンストレイントでオフセットを維持するか。
+        use_scale_constraint: scaleConstraintを使用するか。
+        normal_axis: 円の法線軸("X", "Y", "Z")。
+        orientation_mode: "match"または"world"。
+
+    Returns:
+        (コントローラー名, グループ名, コンストレイントリスト)のタプル。
+
+    Raises:
+        RuntimeError: ターゲットが存在しない場合。
+    """
     if not cmds.objExists(target):
         raise RuntimeError(f"Target does not exist: {target}")
 
     base = _safe_name_from_target(target)
     input_name = input_name.strip() or "CTL"
 
-    # Naming
+    # 命名
     desired_ctrl_name = _unique_name(f"{base}_{input_name}_CTL")
     root_name = _find_joint_root_name(target)
     desired_root_grp_name = f"{root_name}_{input_name}_GRP"
     desired_offset_grp_name = _unique_name(f"{base}_{input_name}_CTL_GRP")
 
-    # 1) Create ctrl at origin (clean)
+    # 1) 原点でコントローラーを作成(クリーン)
     ctrl = _create_shape_transform(shape_key, desired_ctrl_name, normal_axis=normal_axis)
 
-    # 2) Freeze at origin (safe)
+    # 2) 原点でフリーズ(安全)
     _freeze_trs(ctrl)
 
-    # 3) Create per-target offset group under root container
+    # 3) ルートコンテナ下にターゲットごとのオフセットグループを作成
     grp = _make_offset_group(
         ctrl=ctrl,
         target=target,
@@ -327,7 +489,7 @@ def create_controller_for_target(
 
     _rename_shape_as_transform_shape(ctrl)
 
-    # 4) Constrain target to ctrl
+    # 4) ターゲットをコントローラーにコンストレイント
     constraints = _constrain_target_to_ctrl(
         target=target,
         ctrl=ctrl,
@@ -339,7 +501,7 @@ def create_controller_for_target(
 
 
 # =========================
-# Hierarchy mirror helper
+# 階層ミラーヘルパー
 # =========================
 
 def _mirror_joint_hierarchy_with_controllers(
@@ -347,11 +509,18 @@ def _mirror_joint_hierarchy_with_controllers(
         target_to_ctrl: Dict[str, str],
         target_to_grp: Dict[str, str],
 ) -> None:
-    """Parent each target's controller GROUP under its parent target's controller.
+    """コントローラーでジョイント階層をミラーリングする。
 
-    Rule:
-    - child controller GROUP (*_CTL_GRP) -> parent under parent CTRL transform
-    - only applies when the parent exists in the created set
+    各ターゲットのコントローラーGROUPを親ターゲットのコントローラー下に親子付けします。
+
+    ルール:
+    - 子コントローラーGROUP(*_CTL_GRP) -> 親CTRL transform下に親子付け
+    - 親が作成済みセットに存在する場合のみ適用
+
+    Args:
+        targets: ターゲットノードのシーケンス。
+        target_to_ctrl: ターゲットからコントローラーへのマッピング。
+        target_to_grp: ターゲットからグループへのマッピング。
     """
     for t in targets:
         parents = cmds.listRelatives(t, p=True, f=True) or []
@@ -366,7 +535,7 @@ def _mirror_joint_hierarchy_with_controllers(
         if not child_grp or not parent_ctrl:
             continue
 
-        # Parent while preserving child's world transform
+        # 子のワールドトランスフォームを保持しながら親子付け
         try:
             _parent_preserve_world(child_grp, parent_ctrl)
         except Exception:
@@ -378,7 +547,13 @@ def _mirror_joint_hierarchy_with_controllers(
 # =========================
 
 class _UI:
+    """コントローラー作成ツールのUIクラス。
+
+    Mayaウィンドウを作成し、コントローラー作成のためのインターフェースを提供します。
+    """
+
     def __init__(self) -> None:
+        """UIインスタンスを初期化する。"""
         self.win: Optional[str] = None
         self.shape_menu: Optional[str] = None
         self.target_list: Optional[str] = None
@@ -390,6 +565,7 @@ class _UI:
         self.txt_input_name: Optional[str] = None
 
     def build(self) -> None:
+        """UIウィンドウを構築して表示する。"""
         if cmds.window(WINDOW_NAME, exists=True):
             cmds.deleteUI(WINDOW_NAME)
 
@@ -455,42 +631,89 @@ class _UI:
         cmds.showWindow(self.win)
 
     def _get_shape_key(self) -> str:
+        """現在選択されている形状キーを取得する。
+
+        Returns:
+            形状キー文字列。
+        """
         return "Circle"
 
     def _opt_orientation_mode(self) -> str:
+        """UIから方向モードを取得する。
+
+        Returns:
+            "world"または"match"。
+        """
         v = cmds.optionMenu(self.orient_menu, q=True, v=True)
         return "world" if v == "World" else "match"
 
     def _opt_normal_axis(self) -> str:
+        """UIから法線軸を取得する。
+
+        Returns:
+            "X", "Y", または"Z"。
+        """
         v = cmds.optionMenu(self.normal_menu, q=True, v=True)
         return (v or "Y").strip().upper()
 
     def _opt_maintain_offset(self) -> bool:
+        """オフセット維持オプションを取得する。
+
+        Returns:
+            チェックされている場合True。
+        """
         return bool(cmds.checkBox(self.chk_maintain_offset, q=True, v=True))
 
     def _opt_scale_constraint(self) -> bool:
+        """スケールコンストレイントオプションを取得する。
+
+        Returns:
+            チェックされている場合True。
+        """
         return bool(cmds.checkBox(self.chk_scale_constraint, q=True, v=True))
 
     def _opt_build_hierarchy(self) -> bool:
+        """階層構築オプションを取得する。
+
+        Returns:
+            チェックされている場合True。
+        """
         return bool(cmds.checkBox(self.chk_build_hierarchy, q=True, v=True))
 
     def _opt_input_name(self) -> str:
+        """入力名を取得する。
+
+        Returns:
+            入力名文字列(空の場合は"CTL")。
+        """
         name = cmds.textFieldGrp(self.txt_input_name, q=True, text=True) or "CTL"
         return name.strip() or "CTL"
 
     def refresh_targets(self) -> None:
+        """現在の選択からターゲットリストを更新する。"""
         sel = cmds.ls(sl=True, long=True) or []
         cmds.textScrollList(self.target_list, e=True, removeAll=True)
         if sel:
             cmds.textScrollList(self.target_list, e=True, append=sel)
 
     def _get_all_targets_in_list(self) -> List[str]:
+        """リスト内のすべてのターゲットを取得する。
+
+        Returns:
+            ターゲット名のリスト。
+        """
         return list(cmds.textScrollList(self.target_list, q=True, allItems=True) or [])
 
     def _get_selected_targets_in_list(self) -> List[str]:
+        """リスト内で選択されているターゲットを取得する。
+
+        Returns:
+            選択されているターゲット名のリスト。
+        """
         return list(cmds.textScrollList(self.target_list, q=True, selectItem=True) or [])
 
     def create_for_all(self) -> None:
+        """リスト内のすべてのターゲットに対してコントローラーを作成する。"""
         targets = self._get_all_targets_in_list()
         if not targets:
             cmds.warning("List is empty.")
@@ -498,6 +721,7 @@ class _UI:
         self._create_batch(targets)
 
     def create_for_selected(self) -> None:
+        """リスト内で選択されているターゲットに対してコントローラーを作成する。"""
         targets = self._get_selected_targets_in_list()
         if not targets:
             cmds.warning("No selection in list.")
@@ -505,6 +729,11 @@ class _UI:
         self._create_batch(targets)
 
     def _create_batch(self, targets: Sequence[str]) -> None:
+        """複数のターゲットに対してバッチでコントローラーを作成する。
+
+        Args:
+            targets: コントローラーを作成するターゲットのシーケンス。
+        """
         shape_key = self._get_shape_key()
         input_name = self._opt_input_name()
         orientation_mode = self._opt_orientation_mode()
@@ -521,7 +750,7 @@ class _UI:
 
         cmds.undoInfo(openChunk=True)
         try:
-            # 1) Create controllers (independent)
+            # 1) コントローラーを作成(独立)
             for t in targets:
                 try:
                     ctrl, grp, cons = create_controller_for_target(
@@ -540,7 +769,7 @@ class _UI:
                 except Exception as e:
                     cmds.warning(f"Failed {t}: {e}")
 
-            # 2) Mirror hierarchy (group under parent ctrl)
+            # 2) 階層をミラーリング(グループを親コントローラー下に配置)
             if build_hierarchy and target_to_ctrl:
                 _mirror_joint_hierarchy_with_controllers(targets, target_to_ctrl, target_to_grp)
 
@@ -556,6 +785,10 @@ _UI_INSTANCE: Optional[_UI] = None
 
 
 def run() -> None:
+    """UIを実行する。
+
+    新しいUIインスタンスを作成して表示します。
+    """
     global _UI_INSTANCE
     _UI_INSTANCE = _UI()
     _UI_INSTANCE.build()
