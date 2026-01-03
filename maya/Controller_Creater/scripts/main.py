@@ -220,28 +220,29 @@ def _rename_shape_as_transform_shape(ctrl: str) -> None:
             new_shape = _unique_name(new_shape)
         cmds.rename(shp, new_shape)
 
+def _get_world_position(target: str) -> Tuple[float, float, float]:
+    """
+    Get world position robustly from world matrix.
+    Works even if target is frozen or under parents.
+    """
+    m = _get_world_matrix(target)  # 16 floats, row-major
+    return (m[12], m[13], m[14])
+
 
 def _make_offset_group(ctrl: str, target: str, match_orientation: bool) -> str:
-    """
-    Create offset group and place it:
-      - match_orientation=False: group is world axis, translation to target pivot
-      - match_orientation=True : group matches target world matrix (pos+rot+scale)
-    """
     grp_name = _unique_name(f"{ctrl}_GRP")
     grp = cmds.group(em=True, n=grp_name)
 
     if match_orientation:
         m = _get_world_matrix(target)
         cmds.xform(grp, ws=True, m=m)
-        # IMPORTANT:
-        # If you don't want group inherit scale, you can optionally strip scale from matrix.
-        # Leaving as-is is consistent with "match target".
     else:
-        pivot_ws = _get_world_pivot(target)
-        cmds.xform(grp, ws=True, t=pivot_ws)
+        pos = _get_world_position(target)  # ←ここが重要
+        cmds.xform(grp, ws=True, t=pos)
 
     cmds.parent(ctrl, grp)
     return grp
+
 
 
 def _constrain_target_to_ctrl(
