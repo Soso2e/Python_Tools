@@ -241,7 +241,7 @@ def _make_offset_group(
     cmds.xform(offset_grp, ws=True, rp=pos_now, sp=pos_now)
 
     # 3) Parent CTRL under offset group (CTRL remains zeroed)
-    cmds.parent(ctrl, offset_grp)
+    cmds.parent(ctrl, offset_grp, relative=True)
 
     # 4) Parent offset group under root container, preserving world
     _parent_preserve_world(offset_grp, root_grp)
