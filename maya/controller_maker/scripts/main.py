@@ -61,8 +61,8 @@ def _shape_defs() -> Dict[str, ShapeDef]:
 # コアロジック
 # =========================
 
-WINDOW_NAME = "soso_ctrl_creator_win"
-UI_TITLE = "Controller Creator (Circle Only)"
+WINDOW_NAME = "soso_ctrl_maker"
+UI_TITLE = "Controller Maker"
 SHAPE_DEFS: Dict[str, ShapeDef] = _shape_defs()
 
 
@@ -574,14 +574,14 @@ class _UI:
 
         cmds.text(l="Shape:")
         self.shape_menu = cmds.optionMenu(w=360)
-        cmds.menuItem(label="Circle")
+        cmds.menuItem(label="Select Shape")
 
         cmds.separator(h=8, style="in")
 
         cmds.frameLayout(label="Create Options", collapsable=True, collapse=False, mw=8, mh=6)
         cmds.columnLayout(adj=True, rowSpacing=6)
 
-        cmds.text(l="Circle Normal Axis:")
+        cmds.text(l="Shape Normal Axis:")
         self.normal_menu = cmds.optionMenu(w=260)
         cmds.menuItem(label="X")
         cmds.menuItem(label="Y")
