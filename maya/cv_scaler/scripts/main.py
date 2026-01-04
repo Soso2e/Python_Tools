@@ -93,7 +93,7 @@ def _do_scale(factor: float) -> None:
 
 # ---------------- UI ----------------
 
-def _build_ui() -> None:
+def run() -> None:
     """シンプルUIを構築（スライダー＋Applyのみ）。"""
     if cmds.window(WINDOW_NAME, exists=True):
         cmds.deleteUI(WINDOW_NAME, window=True)
@@ -134,4 +134,4 @@ def _build_ui() -> None:
 
 def main() -> None:
     """エントリーポイント：UI起動。"""
-    _build_ui()
+    run()

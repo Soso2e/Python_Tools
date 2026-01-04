@@ -74,7 +74,7 @@ def install_tool() -> None:
 
     user_scripts_root = cmds.internalVar(userScriptDir=True)
     dst_root = os.path.join(user_scripts_root, tool_name)
-    dst_scripts = os.path.join(dst_root, "scripts")
+    dst_scripts = dst_root
     dst_icon = os.path.join(dst_root, "icon")
 
     _copy_subdir(src_scripts, dst_scripts)
@@ -93,7 +93,9 @@ def install_tool() -> None:
         "import sys, importlib; "
         f"p=r'{scripts_path}'; "
         "sys.path.append(p) if p not in sys.path else None; "
-        "import main; importlib.reload(main); main.run()"
+        f"from {tool_name} import main as {tool_name}_main; "
+        f"importlib.reload({tool_name}_main); "
+        f"{tool_name}_main.run()"
     )
 
     _remove_existing_shelf_button(shelf_name, tool_name_with_virsion)
