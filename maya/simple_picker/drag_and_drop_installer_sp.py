@@ -74,7 +74,7 @@ def install_tool() -> None:
 
     user_scripts_root = cmds.internalVar(userScriptDir=True)
     dst_root = os.path.join(user_scripts_root, tool_name)
-    dst_scripts = os.path.join(dst_root, "scripts")
+    dst_scripts = dst_root
     dst_icon = os.path.join(dst_root, "icon")
 
     _copy_subdir(src_scripts, dst_scripts)
@@ -83,7 +83,6 @@ def install_tool() -> None:
     # .mod は使わず、起動時にランタイムへパスを注入する方式に変更。
     scripts_path = dst_scripts.replace("\\", "/")
     icons_path = dst_icon.replace("\\", "/")
-    module_alias = re.sub(r'[^0-9a-zA-Z_]', '_', tool_name) + "_main"
 
     shelf_name = _sanitize_shelf_name(shelf_tab_name)
     mel_path = src_mel.replace("\\", "/")
@@ -91,15 +90,12 @@ def install_tool() -> None:
 
     # 再起動前でもユーザーが押して様子を見られるよう、試行して失敗時は警告。
     py_cmd = (
-        "import sys, os, importlib.util; "
+        "import sys, importlib; "
         f"p=r'{scripts_path}'; "
-        f"mname=r'{module_alias}'; "
-        "mp=os.path.join(p, 'main.py'); "
-        "sys.modules.pop(mname, None); "
-        "spec=importlib.util.spec_from_file_location(mname, mp); "
-        "mod=importlib.util.module_from_spec(spec); "
-        "sys.modules[mname]=mod; spec.loader.exec_module(mod); "
-        "getattr(mod, 'run')()"
+        "sys.path.append(p) if p not in sys.path else None; "
+        f"from {tool_name} import main as {tool_name}_main; "
+        f"importlib.reload({tool_name}_main); "
+        f"{tool_name}_main.run()"
     )
 
     _remove_existing_shelf_button(shelf_name, tool_name_with_virsion)
