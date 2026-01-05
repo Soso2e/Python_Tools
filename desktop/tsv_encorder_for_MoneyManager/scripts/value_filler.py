@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Tuple
 
 from preset_manager import Preset, match_store_key
 
@@ -26,29 +26,16 @@ def parse_int_amount(value: str) -> int:
     return int(float(s)) if "." in s else int(s)
 
 
-def decide_amount_and_io(withdraw_jpy: str, deposit_jpy: str, overseas_withdraw: str) -> Tuple[int, str]:
-    """B/C/D のどれか1つのみ記入、という前提で金額と収入/支出を決定する。
 
-    B または D → 支出
-    C → 収入
-    """
-    b = (withdraw_jpy or "").strip()
-    c = (deposit_jpy or "").strip()
-    d = (overseas_withdraw or "").strip()
-
-    filled = [x for x in (b, c, d) if x != ""]
-    if len(filled) != 1:
-        raise ValueError(f"amount columns must have exactly 1 value. B='{b}', C='{c}', D='{d}'")
-
-    if b != "":
-        return parse_int_amount(b), "支出"
-    if d != "":
-        return parse_int_amount(d), "支出"
-    return parse_int_amount(c), "収入"
-
-
+# NOTE:
+# 金額(F列)・収入/支出(G列)の判定は table_transformer / encoder_core 側で行う
 def fill_category(store_name: str, preset: Preset) -> Tuple[str, str]:
-    """I列（取引先）からカテゴリ/小カテゴリを埋める（代表語部分一致）。"""
+    """I列（取引先）から分類/内容を埋める（代表語部分一致）。
+
+    - category → C列（分類）
+    - sub_category → E列（内容）
+    ※ D列（小分類）は本ツールでは使用しない。
+    """
     key = match_store_key(store_name, preset)
     if key is None:
         # ここに来るのは「検証」をすり抜けたケースなので基本は例外にする

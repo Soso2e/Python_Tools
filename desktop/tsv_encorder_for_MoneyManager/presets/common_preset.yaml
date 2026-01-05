@@ -9,3 +9,9 @@ store_mapping:
   Google:
     category: 趣味
     sub_category: 課金
+  なか卯:
+    category: 外食
+    sub_category: なか卯
+  BOOKOFF:
+    category: 趣味
+    sub_category: ブックオフ？

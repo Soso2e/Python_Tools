@@ -6,8 +6,23 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from preset_manager import Preset, validate_unknown_stores
-from table_transformer import build_tsv_header, should_skip_row
-from value_filler import decide_amount_and_io, decide_asset, fill_category
+from table_transformer import (
+    should_skip_row,
+    clear_unused_columns,
+    decide_income_or_expense,
+    move_amount_to_f,
+)
+TSV_HEADERS = [
+    "日付",
+    "資産",
+    "分類",
+    "小分類",
+    "内容",
+    "金額",
+    "収入/支出",
+    "メモ",
+]
+from value_filler import decide_asset, fill_category
 
 
 REQUIRED_HEADERS = [
@@ -43,7 +58,10 @@ def extract_store_names(rows: List[Dict[str, str]]) -> List[str]:
 
 
 def transform_to_tsv_rows(rows: List[Dict[str, str]], preset: Preset) -> List[List[str]]:
-    """CSV行をTSV行（List[str]）に変換する。"""
+    """
+    CSV行をTSV行（A〜H列: 日付,資産,分類,小分類,内容,金額,収入/支出,メモ）に変換する。
+    ※ 金額・収入/支出の判定は table_transformer のロジックを使用する。
+    """
     out: List[List[str]] = []
     for r in rows:
         date = (r.get("取引日") or "").strip()
@@ -57,21 +75,42 @@ def transform_to_tsv_rows(rows: List[Dict[str, str]], preset: Preset) -> List[Li
         if should_skip_row(h):
             continue
 
-        amount, io = decide_amount_and_io(b, c, d)
+        # 仕様 2–5: table_transformer 相当の前処理
+        # 不要列を空欄化（row dict -> list 相当のため値だけ扱う）
+        row_list = [
+            r.get("取引日") or "",
+            b,
+            c,
+            d,
+            h,
+            "",  # F
+            "",  # G
+            "",  # H
+            i,
+            j,
+            "",  # K
+            "",  # L
+            "",  # M
+        ]
+        clear_unused_columns(row_list)
+
+        io = decide_income_or_expense(row_list)
+        amount = move_amount_to_f(row_list)
+
         asset = decide_asset(j)
         category, sub_category = fill_category(i, preset)
 
-        # 内容(E列)はH列（取引内容）を入れる（仕様）
-        content = h.strip()
-
+        # 仕様: D(小分類)は空欄、E(内容)はsub_category、H(メモ)は元の店名(取引先)
+        memo = i.strip()
         out.append([
-            date,
-            asset,
-            category,
-            sub_category,
-            content,
-            str(amount),
-            io,
+            date,          # A: 日付
+            asset,         # B: 資産
+            category,      # C: 分類
+            "",            # D: 小分類（未使用）
+            sub_category,  # E: 内容
+            str(amount),   # F: 金額
+            io,            # G: 収入/支出
+            memo,          # H: メモ
         ])
     return out
 
@@ -82,7 +121,7 @@ def write_tsv(tsv_path: str | Path, rows: List[List[str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter="\t")
-        w.writerow(build_tsv_header())
+        w.writerow(TSV_HEADERS)
         w.writerows(rows)
 
 
