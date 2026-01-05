@@ -99,3 +99,84 @@ def validate_unknown_stores(store_names: List[str], preset: Preset) -> List[str]
             unknown.append(name)
 
     return unknown
+
+
+# --- 追加: store_mapping の upsert, カテゴリ候補収集 ---
+def upsert_store_mapping(
+    preset_path: str | Path,
+    store_key: str,
+    category: str,
+    sub_category: str,
+) -> None:
+    """store_mapping に店舗キーを追記または上書きして保存する。
+
+    Args:
+        preset_path: YAMLプリセットのパス。
+        store_key: 登録キー（部分一致で使う代表語）。
+        category: カテゴリ。
+        sub_category: サブカテゴリ。
+
+    Raises:
+        FileNotFoundError: preset_path が存在しない。
+        ValueError: YAMLの形式が不正。
+    """
+    path = Path(preset_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Preset not found: {path}")
+
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+    store_mapping = data.get("store_mapping")
+    if store_mapping is None:
+        store_mapping = {}
+        data["store_mapping"] = store_mapping
+
+    if not isinstance(store_mapping, dict):
+        raise ValueError("store_mapping must be a dict")
+
+    key = str(store_key).strip()
+    if not key:
+        raise ValueError("store_key must not be empty")
+
+    store_mapping[key] = {
+        "category": str(category).strip(),
+        "sub_category": str(sub_category).strip(),
+    }
+
+    # sort_keys=False で並びを極力維持（ただしyaml.safe_dumpの仕様上、フォーマットは変わる場合あり）
+    path.write_text(
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+
+def collect_category_options(preset_path: str | Path) -> Tuple[List[str], List[str]]:
+    """既存presetから category / sub_category の候補を収集する。
+
+    Args:
+        preset_path: YAMLプリセットのパス。
+
+    Returns:
+        Tuple[List[str], List[str]]: (categories, sub_categories)
+            - いずれもユニーク、出現順優先。
+    """
+    preset = load_preset(preset_path)
+
+    categories: List[str] = []
+    sub_categories: List[str] = []
+    seen_cat: set[str] = set()
+    seen_sub: set[str] = set()
+
+    for v in preset.store_mapping.values():
+        cat = str(v.get("category", "")).strip()
+        sub = str(v.get("sub_category", "")).strip()
+
+        if cat and cat not in seen_cat:
+            categories.append(cat)
+            seen_cat.add(cat)
+
+        if sub and sub not in seen_sub:
+            sub_categories.append(sub)
+            seen_sub.add(sub)
+
+    return categories, sub_categories

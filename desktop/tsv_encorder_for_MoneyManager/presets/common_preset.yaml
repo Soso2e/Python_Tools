@@ -6,3 +6,6 @@ store_mapping:
   ローソン:
     category: 食費
     sub_category: コンビニ
+  Google:
+    category: 趣味
+    sub_category: 課金
