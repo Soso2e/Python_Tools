@@ -76,14 +76,14 @@ class App(tk.Tk):
         mid = tk.Frame(self, padx=12, pady=6)
         mid.pack(fill="x")
 
-        self.check_btn = tk.Button(mid, text="店名チェック", height=2, command=self.check)
+        self.check_btn = tk.Button(mid, text="チェック", height=2, command=self.check)
         self.check_btn.pack(side="left")
+
+        self.register_btn = tk.Button(mid, text="未登録店舗を登録", height=2, command=self.open_register_dialog, state="disabled")
+        self.register_btn.pack(side="left", padx=(8, 0))
 
         self.run_btn = tk.Button(mid, text="TSV変換", height=2, command=self.run, state="disabled")
         self.run_btn.pack(side="left", padx=(8, 0))
-
-        self.register_btn = tk.Button(mid, text="店舗を登録", height=2, command=self.open_register_dialog, state="disabled")
-        self.register_btn.pack(side="left", padx=(8, 0))
 
         tk.Button(mid, text="ログクリア", command=self.clear_log).pack(side="left", padx=(8, 0))
 
@@ -270,15 +270,27 @@ class App(tk.Tk):
         key_entry.grid(row=0, column=1, sticky="ew", pady=4)
 
         # category
-        tk.Label(form, text="category", anchor="w").grid(row=1, column=0, sticky="w", pady=4)
+        tk.Label(form, text="分類", anchor="w").grid(row=1, column=0, sticky="w", pady=4)
         cat_var = tk.StringVar(value=self.category_options[0] if self.category_options else "")
-        cat_box = ttk.Combobox(form, textvariable=cat_var, values=self.category_options, state="readonly")
+        cat_box = ttk.Combobox(
+            form,
+            textvariable=cat_var,
+            values=self.category_options,
+            state="readonly",
+            height=13,
+        )
         cat_box.grid(row=1, column=1, sticky="ew", pady=4)
 
         # sub_category
-        tk.Label(form, text="sub_category", anchor="w").grid(row=2, column=0, sticky="w", pady=4)
+        tk.Label(form, text="内容", anchor="w").grid(row=2, column=0, sticky="w", pady=4)
         sub_var = tk.StringVar(value=self.sub_category_options[0] if self.sub_category_options else "")
-        sub_box = ttk.Combobox(form, textvariable=sub_var, values=self.sub_category_options, state="normal")
+        sub_box = ttk.Combobox(
+            form,
+            textvariable=sub_var,
+            values=self.sub_category_options,
+            state="normal",
+            height=13,
+        )
         sub_box.grid(row=2, column=1, sticky="ew", pady=4)
 
         form.columnconfigure(1, weight=1)
@@ -303,7 +315,7 @@ class App(tk.Tk):
                 messagebox.showerror("エラー", "登録する名前（キー）を入力してください", parent=dlg)
                 return
             if not cat or not sub:
-                messagebox.showerror("エラー", "category / sub_category を入力してください", parent=dlg)
+                messagebox.showerror("エラー", "分類 / 内容 を入力してください", parent=dlg)
                 return
 
             try:
@@ -347,9 +359,10 @@ class App(tk.Tk):
 
             go_next()
 
-        tk.Button(btns, text="登録して次へ", command=commit_and_next).pack(side="left")
-        tk.Button(btns, text="スキップ", command=skip_and_next).pack(side="left", padx=(8, 0))
-        tk.Button(btns, text="閉じる", command=dlg.destroy).pack(side="right")
+        tk.Button(btns, text="閉じる", command=dlg.destroy).pack(side="left")
+
+        tk.Button(btns, text="登録して次へ", command=commit_and_next).pack(side="right")
+        tk.Button(btns, text="スキップ", command=skip_and_next).pack(side="right", padx=(0, 8))
 
         key_entry.focus_set()
 

@@ -15,3 +15,357 @@ store_mapping:
   BOOKOFF:
     category: 趣味
     sub_category: ブックオフ？
+  にこ:
+    category: その他
+    sub_category: にこへ
+  大蔵屋商事:
+    category: その他
+    sub_category: ？
+  湯屋敷:
+    category: 趣味
+    sub_category: 温泉
+  PASMO:
+    category: 交通費
+    sub_category: PASMOへ
+  オーケー:
+    category: 食材
+    sub_category: 食費　オーケー
+  ミスタードーナツ:
+    category: 外食
+    sub_category: ミスド
+  ウエルシア:
+    category: 生活用品
+    sub_category: ウェルシア
+  J：COM:
+    category: 通信費？
+    sub_category: WIFI代
+  サイゼリヤ:
+    category: 外食
+    sub_category: サイゼ
+  ラケル:
+    category: 外食
+    sub_category: オムライス
+  携帯電話料金:
+    category: 通信費？
+    sub_category: スマホ代
+  ＬＩＶＩＮ田無店:
+    category: 食材
+    sub_category: 食費、田無リヴィン
+  セリア:
+    category: 生活用品
+    sub_category: 百均
+  ドコモ:
+    category: 通信費？
+    sub_category: スマホ代iPhone
+  HUB:
+    category: 外食
+    sub_category: ハブ　お酒
+  松のや:
+    category: 外食
+    sub_category: とんかつ
+  まねきねこ:
+    category: 趣味
+    sub_category: カラオケ
+  ＩＩＪ:
+    category: 通信費？
+    sub_category: iPhone通信費
+  ワンカラ:
+    category: 趣味
+    sub_category: カラオケ
+  NewDays:
+    category: コンビニ
+    sub_category: にゅーで
+  PAYPAL:
+    category: 趣味
+    sub_category: わからない多分課金
+  ﾆﾊﾞﾝ:
+    category: その他
+    sub_category: ゆあち
+  トモニー:
+    category: コンビニ
+    sub_category: ともにー
+  Ｍｒｓ．　ＧＲＥＥＮ　ＡＰＰＬＥ　ＦＣ:
+    category: 趣味
+    sub_category: ミセス　リンゴジャム
+  中華食堂:
+    category: 外食
+    sub_category: 歌舞伎の安い中華
+  マクドナルド:
+    category: 外食
+    sub_category: マック
+  ＲＩＯＴ　ＧＡＭＥＳ:
+    category: 趣味
+    sub_category: 課金。VALORANT。愚か。
+  DMM.com:
+    category: 趣味
+    sub_category: あっ
+  ファミリーマート:
+    category: コンビニ
+    sub_category: ファミマ
+  西武鉄道定期券:
+    category: 交通費
+    sub_category: 定期代
+  ミノコウナン:
+    category: その他
+    sub_category: さいぜ？
+  KAGURA:
+    category: みつぎもの
+    sub_category: おみあげ
+  一天門:
+    category: 外食
+    sub_category: ラーメン
+  ＰＡＳＭＯ:
+    category: 交通費
+    sub_category: PASMOへ
+  こころ:
+    category: その他
+    sub_category: こころ
+  寿司酒場:
+    category: 外食
+    sub_category: 居酒屋
+  カラオケ館:
+    category: 趣味
+    sub_category: カラオケ
+  ハチアゲモノテン:
+    category: 外食
+    sub_category: 居酒屋
+  ＤＬｓｉｔｅ:
+    category: 趣味
+    sub_category: あっ
+  スズキナオヤ:
+    category: その他
+    sub_category: お父さん
+  ＭＶＢＥ:
+    category: 食材
+    sub_category: BIGかも？
+  ふーちゃん:
+    category: その他
+    sub_category: まみー
+  海天丸:
+    category: 外食
+    sub_category: お寿司
+  日本郵便:
+    category: みつぎもの
+    sub_category: 郵送費
+  大衆酒泉:
+    category: 外食
+    sub_category: 居酒屋
+  マシッタ:
+    category: 外食
+    sub_category: 韓国料理　札幌
+  ZOZOTOWN:
+    category: ファッション
+    sub_category: 服
+  シネマフロンティア:
+    category: 趣味
+    sub_category: 映画
+  ＤＩＳＮＥＹＰＬＵＳ:
+    category: 通信費？
+    sub_category: Disneyプラス　ディズニープラス
+  イオン:
+    category: 食材
+    sub_category: 多分食材。
+  たぬきの星:
+    category: ごほうび
+    sub_category: おかし
+  Ｊ：ＣＯＭ:
+    category: 通信費？
+    sub_category: WIFI
+  APPLE COM BILL:
+    category: 通信費？
+    sub_category: Appleペイ　課金　多分ChatGPT
+  無印良品:
+    category: 生活用品
+    sub_category: 無印
+  ＥＴＣ:
+    category: 交通費
+    sub_category: 高速代金
+  アピア:
+    category: 外食
+    sub_category: たぶん外食
+  ゴンチャ:
+    category: スタバ
+    sub_category: ゴンチャ
+  リンガーハット:
+    category: 外食
+    sub_category: リンガーハットってなに
+  ラクーア:
+    category: 趣味
+    sub_category: 温泉
+  東京ドームシティ:
+    category: 外食
+    sub_category: 東京ドームの外食だと思う
+  ターリー屋:
+    category: 外食
+    sub_category: ナン食べ放題
+  ＴＯＨＯシネマズ:
+    category: 趣味
+    sub_category: 映画
+  コーヒー:
+    category: スタバ
+    sub_category: カフェ。ドトール？
+  Olympic:
+    category: 食材
+    sub_category: スーパーオリンピック
+  牛家兄弟:
+    category: 外食
+    sub_category: 蘭州、かかちゃんラーメン
+  ブックファースト:
+    category: 趣味
+    sub_category: 本
+  ハルク:
+    category: その他
+    sub_category: ？なにこれ
+  日高屋:
+    category: 外食
+    sub_category: ひだかや
+  ハイデイ日高:
+    category: 外食
+    sub_category: ひだかや
+  我武者羅:
+    category: 外食
+    sub_category: ラーメン
+  キャンドゥ:
+    category: 生活用品
+    sub_category: 百均
+  おむすび権米衛:
+    category: 外食
+    sub_category: おにぎり
+  スシロー:
+    category: 外食
+    sub_category: お寿司
+  もふお:
+    category: その他
+    sub_category: もふお　みう
+  お店:
+    category: その他
+    sub_category: ポイント？
+  ダイソー:
+    category: 生活用品
+    sub_category: 百均
+  ジェットスター:
+    category: 交通費
+    sub_category: 飛行機ジェットスター
+  西友:
+    category: 食材
+    sub_category: 食材とかセイユー
+  カインズ:
+    category: 生活用品
+    sub_category: カインズ
+  けいこ:
+    category: その他
+    sub_category: おこずかい
+  ポイント運用:
+    category: その他
+    sub_category: ポイント株
+  旨caro:
+    category: 外食
+    sub_category: Cygamesのランチだ。。。
+  COFFEE:
+    category: スタバ
+    sub_category: Cygamesのカフェ
+  ROCK IN JAPAN FESTIVAL:
+    category: 趣味
+    sub_category: ロッキンの
+  マツモトキヨシ:
+    category: 生活用品
+    sub_category: ドラックストア
+  '********':
+    category: その他
+    sub_category: 送金受け取り
+  自販機:
+    category: 外食
+    sub_category: ドリンク
+  ラーメン:
+    category: 外食
+    sub_category: ラーメン
+  たー:
+    category: その他
+    sub_category: たくみ
+  焼肉ライク:
+    category: 外食
+    sub_category: 焼肉
+  IV:
+    category: 外食
+    sub_category: ライブハウス
+  カブシキガイシャダイニー:
+    category: 外食
+    sub_category: なにこれ？
+  PayPay:
+    category: その他
+    sub_category: チャージ
+  西武沿線 駅ナカ・駅チカ:
+    category: ごほうび
+    sub_category: なにこれ？多分らぽっぽ
+  松屋フーズ:
+    category: 外食
+    sub_category: 松屋
+  オフィスグリコ:
+    category: ごほうび
+    sub_category: なに？
+  24LOGI:
+    category: その他
+    sub_category: なに？
+  丸八:
+    category: 外食
+    sub_category: 居酒屋
+  ケンタッキー:
+    category: 外食
+    sub_category: KFCケンタッキー
+  丸亀製麺:
+    category: 外食
+    sub_category: うどん
+  コーンスープ官房長官:
+    category: その他
+    sub_category: だれ
+  松石:
+    category: ごほうび
+    sub_category: なにこれ？
+  あかい:
+    category: その他
+    sub_category: だれ？
+  よしき:
+    category: その他
+    sub_category: だれ？
+  サブウェイ:
+    category: 外食
+    sub_category: サブウェイ
+  東急ストア:
+    category: 食材
+    sub_category: なんだろう
+  エクセルシオール:
+    category: スタバ
+    sub_category: コーヒー。エクセシオール
+  🐏:
+    category: その他
+    sub_category: だれ？
+  アインズ＆トルペ:
+    category: ファッション
+    sub_category: アインズトルペ
+  成城石井:
+    category: 食材
+    sub_category: 成城石井
+  オッズパーク:
+    category: 趣味
+    sub_category: 競馬
+  メルカリ:
+    category: 趣味
+    sub_category: メルカリ
+  ドンキホーテ:
+    category: 生活用品
+    sub_category: ドンキ
+  壱角家:
+    category: 外食
+    sub_category: ラーメン
+  ガーデン:
+    category: 外食
+    sub_category: ラーメン
+  むさしの森珈琲:
+    category: スタバ
+    sub_category: むさしの森
+  GEO:
+    category: ファッション
+    sub_category: 多分服
+  セカンドストリート:
+    category: ファッション
+    sub_category: 服
